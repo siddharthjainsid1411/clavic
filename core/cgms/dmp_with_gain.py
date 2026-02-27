@@ -60,7 +60,9 @@ class DMPWithGainScheduling:
         phase           = self.ds.time_system(ts)
         goal            = self.ds.polynomial_system(ts, self.start, self.end, 3)
 
-        d, m = 20.0, 1.0
+        self.d = 20.0
+        self.m = 1.0
+        d, m = self.d, self.m
         k    = (d**2) / 4.0
         
         """
@@ -137,7 +139,7 @@ class DMPWithGainScheduling:
             gate  = phase
             goal  = self.ds.polynomial_system(np.array([t]), self.start, self.end, 3)[0]
             fhat  = np.array([self.rbf_traj[i].predict(phase)[0,0] for i in range(3)])
-            d, m  = 20.0, 1.0
+            d, m  = self.d, self.m
             k     = (d**2)/4.0
             spring = k * (y - goal)
             damper = d * self.tau * yd

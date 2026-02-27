@@ -5,13 +5,15 @@ import numpy as np
 
 def smooth_min(values, k=40.0):
     values = np.array(values)
-    return -1.0 / k * np.log(np.sum(np.exp(-k * values)))
+    v_max = np.max(values)                            # shift to prevent underflow
+    return v_max - 1.0 / k * np.log(np.sum(np.exp(-k * (values - v_max))))
 
 
 def smooth_max(values, k=40.0):
     values = np.array(values)
-    weights = np.exp(k * values)
-    return np.sum(values * weights) / np.sum(weights)
+    v_max = np.max(values)                            # shift to prevent overflow/underflow
+    weights = np.exp(k * (values - v_max))
+    return np.sum(values * weights) / (np.sum(weights) + 1e-12)
 
 
 def eventually(rho, k=20.0):

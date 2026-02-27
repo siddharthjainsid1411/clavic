@@ -1,4 +1,5 @@
 import json
+import numpy as np
 from spec.taskspec import TaskSpec, Clause
 
 
@@ -70,6 +71,8 @@ def extract_parameters(predicate_name, bindings):
     for key, value in bindings.items():
         if key.startswith(predicate_name + "."):
             param_name = key.split(".")[1]
+            if isinstance(value, list):
+                value = np.array(value, dtype=float)
             params[param_name] = value
 
     return params

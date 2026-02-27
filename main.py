@@ -5,7 +5,7 @@ from spec.taskspec import TaskSpec, Clause
 from spec.compiler import Compiler
 
 # ---- Logic ----
-from logic.predicates import at_goal_pose, human_comfort_distance, velocity_limit
+from logic.predicates import at_goal_pose, human_comfort_distance, velocity_limit, human_body_exclusion
 
 # ---- Core ----
 from core.certified_policy import CertifiedPolicy
@@ -24,7 +24,8 @@ def build_predicate_registry():
     return {
         "AtGoalPose": at_goal_pose,
         "HumanComfortDistance": human_comfort_distance,
-        "VelocityLimit": velocity_limit
+        "HumanBodyExclusion": human_body_exclusion,
+        "VelocityLimit": velocity_limit,
     }
 
 
@@ -75,7 +76,7 @@ def main():
     print("Starting Optimization...")
 
     N_SAMPLES = 12
-    N_UPDATES = 40
+    N_UPDATES = 80
 
     best_cost = float("inf")
 
@@ -168,20 +169,36 @@ def main():
 
     plt.scatter(pos_nom[0,0], pos_nom[0,1], c='green', s=100, label="Start")
     plt.scatter(goal_pose[0], goal_pose[1], c='black', s=100, label="Goal")
-    plt.scatter(human_position[0], human_position[1], c='orange', s=100, label="Human")
+    plt.scatter(human_position[0], human_position[1], c='red', s=100, label="Human", zorder=5)
 
-    circle = plt.Circle(
+    # Human comfort distance (soft constraint) — orange dashed ring
+    circle_comfort = plt.Circle(
         (human_position[0], human_position[1]),
         0.15,
         color='orange',
         fill=False,
-        linestyle=':'
+        linestyle=':',
+        linewidth=2,
+        label="Comfort zone (r=0.15m)"
     )
-    plt.gca().add_patch(circle)
+    plt.gca().add_patch(circle_comfort)
 
-    plt.legend()
+    # Human body exclusion (hard constraint) — red filled circle
+    circle_body = plt.Circle(
+        (human_position[0], human_position[1]),
+        0.06,
+        color='red',
+        fill=True,
+        alpha=0.3,
+        linewidth=2,
+        label="Body exclusion (r=0.06m)"
+    )
+    plt.gca().add_patch(circle_body)
+
+    plt.legend(fontsize=8, loc='best', framealpha=0.95)
     plt.axis('equal')
     plt.title("Nominal vs Learned Trajectory")
+    plt.tight_layout()
     plt.show()
     plt.savefig("traj.png", dpi=300)
     print("Saved traj.png")

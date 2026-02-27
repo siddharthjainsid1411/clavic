@@ -1,5 +1,5 @@
 {
-  "horizon_sec": 10.0,
+  "horizon_sec": 2.0,
 
   "clauses": [
     {
@@ -15,10 +15,16 @@
       "modality": "PREFER"
     },
     {
-    "type": "always",
-    "predicate": "VelocityLimit",
-    "weight": 10.0,
-    "modality": "REQUIRE"
+      "type": "always",
+      "predicate": "HumanBodyExclusion",
+      "weight": 5.0,
+      "modality": "REQUIRE"
+    },
+    {
+      "type": "always",
+      "predicate": "VelocityLimit",
+      "weight": 10.0,
+      "modality": "REQUIRE"
     }
   ],
 
@@ -28,6 +34,10 @@
 
     "HumanComfortDistance.human_position": [0.30, 0.40, 0.11],
     "HumanComfortDistance.preferred_distance": 0.15,
+
+    "HumanBodyExclusion.human_position": [0.30, 0.40, 0.11],
+    "HumanBodyExclusion.body_radius": 0.06,
+
     "VelocityLimit.vmax": 0.5
   }
 }
