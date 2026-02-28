@@ -11,6 +11,8 @@ class Clause:
     weight: float          # logic weight
     modality: str          # "REQUIRE" or "PREFER"
     parameters: Dict[str, Any] = field(default_factory=dict)
+    deadline_sec: float = None   # optional: evaluate only over [0, deadline_sec]
+                                 # None means use full trajectory (normal behaviour)
 
 
 @dataclass

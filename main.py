@@ -47,12 +47,7 @@ def main():
     compiler = Compiler(predicate_registry)
     objective_fn = compiler.compile(taskspec)
 
-    certified_policy = CertifiedPolicy(
-        tau=taskspec.horizon_sec,
-        tau_learnable=True,
-        tau_min=1.0,
-        tau_max=taskspec.horizon_sec,
-    )
+    certified_policy = CertifiedPolicy(taskspec.horizon_sec)
 
     theta_dim = certified_policy.parameter_dimension()
 

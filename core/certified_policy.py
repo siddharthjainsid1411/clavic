@@ -9,7 +9,7 @@ class Trace:
     Lightweight container for trajectory trace.
     """
     def __init__(self, time, position, velocity, gains,
-                 raw_sk_weights=None, raw_sd_weights=None, tau=None):
+                 raw_sk_weights=None, raw_sd_weights=None):
         self.time = time
         self.position = position
         self.velocity = velocity
@@ -17,31 +17,22 @@ class Trace:
         # Pre-clip raw weights — used by compiler for honest stiffness penalty
         self.raw_sk_weights = raw_sk_weights
         self.raw_sd_weights = raw_sd_weights
-        # Actual duration used for this rollout — used by time penalty in compiler
-        self.tau = tau
 
 
 class CertifiedPolicy:
 
-    def __init__(self, tau, tau_learnable=False, tau_min=0.5, tau_max=None):
+    def __init__(self, tau):
 
         # ---- Hardcoded for now ----
         start_pos = np.array([0.55, 0.00, 0.11])
         goal_pos  = np.array([0.05, 0.72, 0.11])
 
-        # ---- Hyperparameters ----
+        # ---- Same hyperparameters as CGMS ----
         self.TAU = tau
         self.DT = 0.01
         self.ALPHA = 0.05
         self.K0 = 200.0
         self.D0 = 30.0
-
-        # ---- Learnable tau settings ----
-        # When tau_learnable=True, one extra scalar is appended to theta.
-        # It is sigmoid-mapped to [tau_min, tau_max] so tau stays bounded.
-        self.tau_learnable = tau_learnable
-        self.tau_min = float(tau_min)
-        self.tau_max = float(tau_max) if tau_max is not None else float(tau)
 
         # ---- Instantiate CGMS DMP ----
         self.dmp = DMPWithGainScheduling(
@@ -67,34 +58,37 @@ class CertifiedPolicy:
     #     return self.dmp.param_dim
     
     def parameter_dimension(self):
-        # +1 for the learnable tau scalar when tau_learnable=True
-        return self.theta_dim + (1 if self.tau_learnable else 0)
+    # +1 for time scaling parameter
+        return self.theta_dim 
 
     def structured_sigma(self, sigma_traj_xy=5.0, sigma_traj_z=5.0,
-                         sigma_sd=5.0, sigma_sk=5.0, sigma_tau=1.0):
+                         sigma_sd=5.0, sigma_sk=5.0):
         """
         Build a per-parameter exploration noise vector.
 
-        Parameter layout (total = parameter_dimension()):
-          [traj_X (51)] [traj_Y (51)] [traj_Z (51)] [SD (42)] [SK (42)] [tau? (1)]
+        Default: uniform σ=5.0 across all groups (same as original behaviour).
+        Individual groups can be overridden if needed, but the clip in
+        set_theta() (Fix B, ±15 on SD/SK weights) is the hard manifold
+        boundary that keeps K bounded — not sigma reduction.
 
-        When tau_learnable=True, the last element is the tau parameter.
-        sigma_tau=1.0 explores ≈ ±1 in sigmoid-input space, which maps to
-        roughly ±(tau_max-tau_min)/4 seconds around the midpoint.
+        Parameter layout (total = theta_dim):
+          [traj_X (51)] [traj_Y (51)] [traj_Z (51)] [SD (42)] [SK (42)]
         """
         n_traj, n_sd, n_sk = self.sizes
-        n_per_axis = n_traj // 3
+        n_per_axis = n_traj // 3                    # 51 weights per axis
 
         sigma = np.empty(self.theta_dim)
         off = 0
-        sigma[off:off + n_per_axis] = sigma_traj_xy;  off += n_per_axis  # X
-        sigma[off:off + n_per_axis] = sigma_traj_xy;  off += n_per_axis  # Y
-        sigma[off:off + n_per_axis] = sigma_traj_z;   off += n_per_axis  # Z
-        sigma[off:off + n_sd]       = sigma_sd;        off += n_sd        # SD
-        sigma[off:off + n_sk]       = sigma_sk;        off += n_sk        # SK
-
-        if self.tau_learnable:
-            sigma = np.append(sigma, sigma_tau)
+        # X-axis trajectory weights
+        sigma[off:off + n_per_axis] = sigma_traj_xy;  off += n_per_axis
+        # Y-axis trajectory weights
+        sigma[off:off + n_per_axis] = sigma_traj_xy;  off += n_per_axis
+        # Z-axis trajectory weights
+        sigma[off:off + n_per_axis] = sigma_traj_z;   off += n_per_axis
+        # SD (damping slack) weights
+        sigma[off:off + n_sd] = sigma_sd;              off += n_sd
+        # SK (stiffness slack) weights
+        sigma[off:off + n_sk] = sigma_sk;              off += n_sk
 
         return sigma
 
@@ -148,20 +142,16 @@ class CertifiedPolicy:
     def rollout(self, theta):
 
         # ----------------------------
-        # Split out tau if learnable
+        # Use full theta as DMP weights
         # ----------------------------
-        if self.tau_learnable:
-            theta_dmp = theta[:-1]          # DMP weights
-            theta_tau = float(theta[-1])    # raw scalar → sigmoid → bounded tau
-            sig = 1.0 / (1.0 + np.exp(-theta_tau))
-            tau = self.tau_min + (self.tau_max - self.tau_min) * sig
-        else:
-            theta_dmp = theta
-            tau = self.TAU
+        theta_dmp = theta
 
         # ----------------------------
-        # Update DMP internal timing
+        # Deterministic time scaling
         # ----------------------------
+        tau = self.TAU   # fixed duration (e.g., 2.0, 5.0, 10.0)
+
+        # Update DMP internal timing
         self.dmp.tau = tau
         self.dmp.ts = np.arange(0.0, tau + 1e-12, self.dmp.dt)
         self.dmp.T  = self.dmp.ts.size
@@ -193,7 +183,6 @@ class CertifiedPolicy:
             },
             raw_sk_weights=raw_sk,
             raw_sd_weights=raw_sd,
-            tau=tau,
         )
 
         return trace

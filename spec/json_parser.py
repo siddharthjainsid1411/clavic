@@ -26,12 +26,16 @@ def load_taskspec_from_json(path):
 
             parameters = extract_parameters(predicate, bindings)
 
+            # Optional per-clause time deadline (None = full trajectory)
+            deadline_sec = c.get("deadline_sec", None)
+
             clause = Clause(
                 operator=operator,
                 predicate=predicate,
                 weight=weight,
                 modality=modality,
-                parameters=parameters
+                parameters=parameters,
+                deadline_sec=deadline_sec,
             )
 
         # Handle until operator

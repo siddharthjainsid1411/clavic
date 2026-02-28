@@ -12,8 +12,6 @@ class Compiler:
 
     def compile(self, taskspec):
 
-        tau_budget = float(taskspec.horizon_sec)   # normalises the time penalty
-
         hard_clauses = []
         soft_clauses = []
 
@@ -66,35 +64,22 @@ class Compiler:
                 total_cost += STIFF_WEIGHT * float(np.mean(excess**2))
 
             # --- Stiffness rate penalty (penalises steep jumps in tr(K)) ---
-            # PI2 sees a real cost for trajectories where tr(K) changes rapidly,
-            # which physically means the impedance controller would demand sudden
-            # torque spikes.  We penalise the RMS of the finite-difference derivative
-            # of tr(K) along the trajectory.
+            # The Q ODE is untouched — this is purely a PI2 cost signal.
+            # We penalise large changes in tr(K) between consecutive timesteps,
+            # which physically correspond to sudden torque demands on the robot.
             #
-            #   cost += RATE_WEIGHT * sqrt( mean( (Δtr(K)/Δt)² ) )
-            #
-            # dt=0.01s so a jump of 680 N/m in one step → rate = 68000 N/m/s
-            # RATE_WEIGHT=5e-4: at rms=668 N/m/s → penalty ≈ 0.33  (gentle signal)
-            # Enough to distinguish spiky trajectories from smooth ones without
-            # destabilising the PI2 landscape.
+            # Implementation: RMS of d(tr(K))/dt along the trajectory.
+            # Normalised by K0 so the penalty is dimensionless.
+            #   smooth traj (rms ~200 N/m/s)  → penalty ≈ 0.1   (small)
+            #   spiky  traj (rms ~5000 N/m/s) → penalty ≈ 2.5   (meaningful)
             RATE_WEIGHT = 5e-4
+            K0_norm     = 200.0   # nominal stiffness for normalisation
             if hasattr(trace, 'gains') and trace.gains is not None:
-                K_arr = trace.gains["K"]                          # (T,3,3)
+                K_arr = trace.gains["K"]
                 trK   = np.array([np.trace(K_arr[i]) for i in range(len(K_arr))])
                 dt    = float(trace.time[1] - trace.time[0]) if len(trace.time) > 1 else 0.01
-                dtrK_dt = np.diff(trK) / dt                       # (T-1,) N/m/s
-                total_cost += RATE_WEIGHT * float(np.sqrt(np.mean(dtrK_dt**2)))
-
-            # --- Time penalty (only active when tau is learnable) ---
-            # Penalises long trajectories: cost += TIME_WEIGHT * (tau / tau_budget)
-            #   tau == tau_budget  → +TIME_WEIGHT   (worst, full horizon used)
-            #   tau == tau_min     → +TIME_WEIGHT * tau_min/tau_budget  (best)
-            # The hard VelocityLimit REQUIRE clause prevents the optimizer from
-            # going arbitrarily fast — it finds the shortest tau that satisfies
-            # all constraints.
-            TIME_WEIGHT = 5.0
-            if hasattr(trace, 'tau') and trace.tau is not None:
-                total_cost += TIME_WEIGHT * float(trace.tau) / tau_budget
+                dtrK  = np.diff(trK) / dt
+                total_cost += RATE_WEIGHT * float(np.sqrt(np.mean(dtrK**2)))
 
             return total_cost
 
@@ -103,7 +88,34 @@ class Compiler:
     def _evaluate_clause(self, trace, clause):
 
         predicate_fn = self.predicate_registry[clause.predicate]
-        rho_trace = predicate_fn(trace, **clause.parameters)
+
+        # --- Deadline slicing ---
+        # If the clause has a deadline_sec, evaluate the predicate only on the
+        # portion of the trajectory up to that time.  The DMP always runs for
+        # the full horizon_sec; the deadline just restricts which part the
+        # temporal logic operator sees.
+        #
+        # Example: AtGoalPose with deadline_sec=1.5 on a horizon_sec=2.0 traj
+        # means "eventually reach goal within the first 1.5s".
+        #
+        # No deadline → use full trace (existing behaviour, backward-compatible).
+        if clause.deadline_sec is not None:
+            import types
+            t = trace.time
+            mask = t <= clause.deadline_sec
+            # Build a lightweight view — only slice numpy arrays
+            sliced = types.SimpleNamespace()
+            sliced.time     = t[mask]
+            sliced.position = trace.position[mask]
+            sliced.velocity = trace.velocity[mask] if trace.velocity is not None else None
+            sliced.gains    = {k: v[mask] for k, v in trace.gains.items()} if trace.gains else None
+            sliced.raw_sk_weights = trace.raw_sk_weights
+            sliced.raw_sd_weights = trace.raw_sd_weights
+            eval_trace = sliced
+        else:
+            eval_trace = trace
+
+        rho_trace = predicate_fn(eval_trace, **clause.parameters)
 
         if clause.operator == "eventually":
             return temporal_logic.eventually(rho_trace)
