@@ -21,6 +21,8 @@ we keep them identical for simplicity).
 import numpy as np
 from core.cgms.dmp_with_gain import DMPWithGainScheduling
 from core.cgms.dynamical_systems import DynamicalSystems
+from core.cgms.orientation_dmp import OrientationDMP
+from core.cgms.quat_utils import quat_normalize
 from core.certified_policy import Trace
 
 
@@ -41,12 +43,19 @@ class MultiPhaseCertifiedPolicy:
                 duration    : float        (seconds)
                 n_bfs_traj  : int          (default 51)
                 n_bfs_slack : int          (default 7)
+            Optional (orientation):
+                start_quat  : list/array (4,)  [w,x,y,z]
+                end_quat    : list/array (4,)  [w,x,y,z]
+                n_bfs_ori   : int          (default 15)
         """
         self.phases = phases
         self.dmps = []
-        self.sizes_list = []     # (n_traj, n_sd, n_sk) per phase
-        self.theta_dims = []     # theta_dim per phase
-        self.offsets = []        # cumulative offsets into flat theta
+        self.ori_dmps = []           # OrientationDMP or None per phase
+        self.sizes_list = []         # (n_traj, n_sd, n_sk) per phase
+        self.ori_dims = []           # orientation theta dim per phase (0 if no ori)
+        self.theta_dims = []         # total theta_dim per phase (pos + ori + SK/SD)
+        self.offsets = []            # cumulative offsets into flat theta
+        self.has_orientation = False # True if ANY phase has quaternions
 
         DT    = 0.01
         ALPHA = 0.05
@@ -66,10 +75,29 @@ class MultiPhaseCertifiedPolicy:
                 K0=K0, D0=D0, alpha=ALPHA, H=H,
             )
             theta_init, n_traj, n_sd, n_sk = dmp.initial_weights()
-            dim = len(theta_init)
+
+            # --- Orientation DMP (optional) ---
+            ori_dmp = None
+            ori_dim = 0
+            if "start_quat" in p and "end_quat" in p:
+                self.has_orientation = True
+                q_start = quat_normalize(np.asarray(p["start_quat"], float))
+                q_end   = quat_normalize(np.asarray(p["end_quat"], float))
+                n_bfs_ori = p.get("n_bfs_ori", 15)
+                ori_dmp = OrientationDMP(
+                    q_start=q_start, q_end=q_end,
+                    tau=p["duration"], dt=DT,
+                    n_bfs_ori=n_bfs_ori,
+                )
+                ori_dim = ori_dmp.n_weights()
+
+            # Theta layout per phase: [traj_xyz | ori_xyz | SD | SK]
+            dim = len(theta_init) + ori_dim
 
             self.dmps.append(dmp)
+            self.ori_dmps.append(ori_dmp)
             self.sizes_list.append((n_traj, n_sd, n_sk))
+            self.ori_dims.append(ori_dim)
             self.theta_dims.append(dim)
             self.offsets.append(offset)
             offset += dim
@@ -83,17 +111,22 @@ class MultiPhaseCertifiedPolicy:
 
     # ------------------------------------------------------------------ #
     def structured_sigma(self, sigma_traj_xy=5.0, sigma_traj_z=5.0,
-                         sigma_sd=5.0, sigma_sk=5.0):
+                         sigma_sd=5.0, sigma_sk=5.0, sigma_ori=2.0):
         """Per-parameter exploration noise — concatenated over all phases."""
         parts = []
         for idx, (dmp, sizes) in enumerate(zip(self.dmps, self.sizes_list)):
             n_traj, n_sd, n_sk = sizes
             n_per_axis = n_traj // 3
+            # Position + ori + SK/SD
             sigma = np.empty(self.theta_dims[idx])
             off = 0
             sigma[off:off + n_per_axis] = sigma_traj_xy; off += n_per_axis
             sigma[off:off + n_per_axis] = sigma_traj_xy; off += n_per_axis
             sigma[off:off + n_per_axis] = sigma_traj_z;  off += n_per_axis
+            # Orientation weights (if present)
+            ori_dim = self.ori_dims[idx]
+            if ori_dim > 0:
+                sigma[off:off + ori_dim] = sigma_ori;    off += ori_dim
             sigma[off:off + n_sd]       = sigma_sd;       off += n_sd
             sigma[off:off + n_sk]       = sigma_sk;       off += n_sk
             parts.append(sigma)
@@ -102,8 +135,9 @@ class MultiPhaseCertifiedPolicy:
     # ------------------------------------------------------------------ #
     def rollout(self, theta):
         """
-        Run all DMP phases in sequence, stitching position & velocity
-        continuously.  Returns a single Trace covering [0, total_horizon].
+        Run all DMP phases in sequence, stitching position, velocity,
+        and (optionally) orientation continuously.
+        Returns a single Trace covering [0, total_horizon].
         """
         all_time = []
         all_pos  = []
@@ -112,11 +146,13 @@ class MultiPhaseCertifiedPolicy:
         all_D    = []
         all_raw_sk = []
         all_raw_sd = []
+        all_quat  = []      # quaternion trajectories
+        all_omega = []      # angular velocity trajectories
 
         t_offset = 0.0    # global time offset for concatenation
 
-        for idx, (dmp, sizes, tdim) in enumerate(
-            zip(self.dmps, self.sizes_list, self.theta_dims)
+        for idx, (dmp, ori_dmp, sizes, tdim) in enumerate(
+            zip(self.dmps, self.ori_dmps, self.sizes_list, self.theta_dims)
         ):
             off = self.offsets[idx]
             theta_phase = theta[off:off + tdim]
@@ -128,12 +164,26 @@ class MultiPhaseCertifiedPolicy:
             dmp.T   = dmp.ts.size
             dmp.ds  = DynamicalSystems(dur)
 
-            # Extract raw weights before clipping
+            # --- Slice theta: [traj_xyz | ori_xyz | SD | SK] ---
             n_traj, n_sd, n_sk = sizes
-            raw_sd = theta_phase[n_traj:n_traj + n_sd].copy()
-            raw_sk = theta_phase[n_traj + n_sd:n_traj + n_sd + n_sk].copy()
+            ori_dim = self.ori_dims[idx]
 
-            dmp.set_theta(theta_phase, sizes)
+            # Position forcing weights
+            pos_weights = theta_phase[:n_traj]
+            ptr = n_traj
+
+            # Orientation weights (if present)
+            if ori_dim > 0:
+                ori_weights = theta_phase[ptr:ptr + ori_dim]
+                ptr += ori_dim
+
+            # SK/SD weights (raw, for stiffness penalty)
+            raw_sd = theta_phase[ptr:ptr + n_sd].copy()
+            raw_sk = theta_phase[ptr + n_sd:ptr + n_sd + n_sk].copy()
+
+            # Build position-only theta for set_theta (same layout as before)
+            pos_theta = np.concatenate([pos_weights, theta_phase[ptr:ptr + n_sd + n_sk]])
+            dmp.set_theta(pos_theta, sizes)
             plan = dmp.rollout_traj()
 
             ts    = plan["ts"] + t_offset
@@ -141,6 +191,19 @@ class MultiPhaseCertifiedPolicy:
             yd    = plan["yd_des"]
             K     = plan["K"]
             D     = plan["D"]
+
+            # --- Orientation rollout (if present) ---
+            q_des = None
+            omega = None
+            if ori_dmp is not None and ori_dim > 0:
+                ori_dmp.tau = dur
+                ori_dmp.ts  = np.arange(0.0, dur + 1e-12, ori_dmp.dt)
+                ori_dmp.T   = ori_dmp.ts.size
+                ori_dmp.ds  = DynamicalSystems(dur)
+                ori_dmp.set_weights(ori_weights)
+                ori_plan = ori_dmp.rollout()
+                q_des = ori_plan["q_des"]
+                omega = ori_plan["omega"]
 
             # For phases after the first, drop the first timestep to
             # avoid duplicate time=boundary points.
@@ -150,6 +213,9 @@ class MultiPhaseCertifiedPolicy:
                 yd = yd[1:]
                 K  = K[1:]
                 D  = D[1:]
+                if q_des is not None:
+                    q_des = q_des[1:]
+                    omega = omega[1:]
 
             all_time.append(ts)
             all_pos.append(y)
@@ -158,8 +224,18 @@ class MultiPhaseCertifiedPolicy:
             all_D.append(D)
             all_raw_sk.append(raw_sk)
             all_raw_sd.append(raw_sd)
+            if q_des is not None:
+                all_quat.append(q_des)
+                all_omega.append(omega)
 
             t_offset = ts[-1]
+
+        # Stitch orientation if any phase had it
+        orientation = None
+        angular_velocity = None
+        if self.has_orientation and len(all_quat) > 0:
+            orientation = np.concatenate(all_quat, axis=0)
+            angular_velocity = np.concatenate(all_omega, axis=0)
 
         trace = Trace(
             time=np.concatenate(all_time),
@@ -171,5 +247,7 @@ class MultiPhaseCertifiedPolicy:
             },
             raw_sk_weights=np.concatenate(all_raw_sk),
             raw_sd_weights=np.concatenate(all_raw_sd),
+            orientation=orientation,
+            angular_velocity=angular_velocity,
         )
         return trace

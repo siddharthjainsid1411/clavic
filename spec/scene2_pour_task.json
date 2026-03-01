@@ -1,0 +1,125 @@
+{
+  "_description": "Scene 2: Coffee mug pour — carry mug to goal, then pour by rotating",
+  "_notes": [
+    "Phase 1: carry mug upright from start to goal position (avoid obstacle)",
+    "Phase 2: hold at goal position, keep upright orientation",
+    "Phase 3: pour — tilt mug 90 deg about Y axis while staying at goal",
+    "Key constraint: don't pour (tilt) UNTIL you reach the goal"
+  ],
+  "horizon_sec": 10.0,
+  "phases": [
+    {
+      "label": "carry_to_goal",
+      "_comment": "Carry mug upright from start to goal, avoid obstacle",
+      "start": [0.55, 0.00, 0.30],
+      "end":   [0.30, 0.55, 0.30],
+      "duration": 4.0,
+      "start_quat": [1.0, 0.0, 0.0, 0.0],
+      "end_quat":   [1.0, 0.0, 0.0, 0.0],
+      "n_bfs_ori": 15
+    },
+    {
+      "label": "hold_at_goal",
+      "_comment": "Hold at goal, keep upright (no pour yet)",
+      "start": [0.30, 0.55, 0.30],
+      "end":   [0.30, 0.55, 0.30],
+      "duration": 2.0,
+      "n_bfs_traj": 11,
+      "n_bfs_slack": 3,
+      "start_quat": [1.0, 0.0, 0.0, 0.0],
+      "end_quat":   [1.0, 0.0, 0.0, 0.0],
+      "n_bfs_ori": 7
+    },
+    {
+      "label": "pour",
+      "_comment": "Tilt mug 90 deg about Y axis to pour while staying at goal",
+      "start": [0.30, 0.55, 0.30],
+      "end":   [0.30, 0.55, 0.30],
+      "duration": 4.0,
+      "n_bfs_traj": 11,
+      "n_bfs_slack": 3,
+      "start_quat": [1.0, 0.0, 0.0, 0.0],
+      "end_quat":   [0.70710678, 0.0, 0.70710678, 0.0],
+      "n_bfs_ori": 15,
+      "_end_quat_note": "90 deg rotation about Y axis = pour orientation"
+    }
+  ],
+  "clauses": [
+    {
+      "type": "eventually_during",
+      "predicate": "AtWaypoint",
+      "weight": 8.0,
+      "modality": "REQUIRE",
+      "time_window": [0.0, 4.0],
+      "_comment": "Reach goal position within phase 1"
+    },
+    {
+      "type": "always_during",
+      "predicate": "HoldAtWaypoint",
+      "weight": 10.0,
+      "modality": "REQUIRE",
+      "time_window": [4.05, 6.0],
+      "_comment": "Hold still at goal during phase 2"
+    },
+    {
+      "type": "always",
+      "predicate": "ObstacleAvoidance",
+      "weight": 15.0,
+      "modality": "REQUIRE",
+      "_comment": "Never enter obstacle exclusion zone"
+    },
+    {
+      "type": "always",
+      "predicate": "VelocityLimit",
+      "weight": 8.0,
+      "modality": "REQUIRE",
+      "_comment": "Cap Cartesian speed"
+    },
+    {
+      "type": "always_during",
+      "predicate": "OrientationLimit",
+      "weight": 10.0,
+      "modality": "REQUIRE",
+      "time_window": [0.0, 6.0],
+      "_comment": "Keep mug upright during carry and hold (phases 1-2): max 15 deg tilt"
+    },
+    {
+      "type": "eventually_during",
+      "predicate": "OrientationAtTarget",
+      "weight": 8.0,
+      "modality": "REQUIRE",
+      "time_window": [6.0, 10.0],
+      "_comment": "Reach pour orientation during phase 3"
+    },
+    {
+      "type": "always",
+      "predicate": "AngularVelocityLimit",
+      "weight": 5.0,
+      "modality": "REQUIRE",
+      "_comment": "Cap angular velocity to prevent jerky rotation"
+    }
+  ],
+  "bindings": {
+    "AtWaypoint.waypoint":   [0.30, 0.55, 0.30],
+    "AtWaypoint.tolerance":  0.04,
+
+    "HoldAtWaypoint.waypoint":        [0.30, 0.55, 0.30],
+    "HoldAtWaypoint.tolerance":       0.04,
+    "HoldAtWaypoint.speed_threshold": 0.01,
+
+    "ObstacleAvoidance.obstacle_position": [0.40, 0.30, 0.30],
+    "ObstacleAvoidance.safe_radius": 0.10,
+
+    "VelocityLimit.vmax": 0.8,
+
+    "OrientationLimit.q_ref":          [1.0, 0.0, 0.0, 0.0],
+    "OrientationLimit.max_angle_rad":  0.2618,
+    "_OrientationLimit_note": "0.2618 rad = 15 deg max tilt from upright during carry",
+
+    "OrientationAtTarget.q_target":       [0.70710678, 0.0, 0.70710678, 0.0],
+    "OrientationAtTarget.tolerance_rad":  0.1745,
+    "_OrientationAtTarget_note": "0.1745 rad = 10 deg tolerance for pour orientation",
+
+    "AngularVelocityLimit.omega_max": 1.5
+  }
+}
