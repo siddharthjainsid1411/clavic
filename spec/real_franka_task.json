@@ -133,6 +133,6 @@
       0.297
     ],
     "LaptopExclusion.safe_radius": 0.223,
-    "VelocityLimit.vmax": 0.8
+    "VelocityLimit.vmax": 1.0
   }
 }
