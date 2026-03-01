@@ -34,20 +34,49 @@ def velocity_limit(trace, vmax):
     return vmax - v_norm
 
 
-def early_completion(trace, tau_budget):
+# ------------------------------------------------------------------ #
+#                    Scene-2 predicates                               #
+# ------------------------------------------------------------------ #
+
+def obstacle_avoidance(trace, obstacle_position, safe_radius):
     """
-    Rewards finishing early within the allowed time budget.
-
-    rho > 0  →  robot completed faster than budget  (good)
-    rho < 0  →  robot took longer than budget        (bad)
-
-    Use with modality=PREFER so the optimizer is incentivized to reduce tau
-    while still satisfying all hard constraints (velocity, exclusion, goal).
-
-    @param tau_budget   (float)
-        Maximum allowed duration (e.g. 2.0 s).  The optimizer will try to
-        beat this by choosing a smaller learned tau.
+    Hard exclusion around a static obstacle.
+    rho > 0  →  safe (outside radius)
+    rho < 0  →  collision
     """
-    tau_actual = getattr(trace, 'tau', tau_budget)
-    # Return a scalar wrapped in an array so temporal_logic operators work
-    return np.array([tau_budget - tau_actual])
+    pos = trace.position
+    d = np.linalg.norm(pos - obstacle_position, axis=1)
+    return d - safe_radius
+
+
+def at_waypoint(trace, waypoint, tolerance=0.03):
+    """
+    Robot is within *tolerance* of a waypoint.
+    Same semantics as at_goal_pose but with a distinct name so JSON
+    can bind different targets to the two predicates independently.
+    """
+    pos = trace.position
+    d = np.linalg.norm(pos - waypoint, axis=1)
+    return tolerance - d
+
+
+def zero_velocity(trace, speed_threshold=0.05):
+    """
+    Robot velocity magnitude is below *speed_threshold*.
+    rho > 0  →  almost stationary
+    rho < 0  →  moving too fast
+    """
+    if trace.velocity is None:
+        raise ValueError("Velocity not available in trace.")
+    v_norm = np.linalg.norm(trace.velocity, axis=1)
+    return speed_threshold - v_norm
+
+
+def hold_at_waypoint(trace, waypoint, tolerance=0.03, speed_threshold=0.05):
+    """
+    Conjunction: robot is near waypoint AND nearly stationary.
+    rho = min(at_waypoint, zero_velocity)  — both must be satisfied.
+    """
+    rho_pos = at_waypoint(trace, waypoint, tolerance)
+    rho_vel = zero_velocity(trace, speed_threshold)
+    return np.minimum(rho_pos, rho_vel)

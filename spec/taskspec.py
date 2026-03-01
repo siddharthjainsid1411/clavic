@@ -1,18 +1,17 @@
 # spec/taskspec.py
 
 from dataclasses import dataclass, field
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Tuple, Optional
 
 
 @dataclass
 class Clause:
-    operator: str          # "eventually", "always", "until"
-    predicate: str         # name of predicate
+    operator: str          # "eventually", "always", "until", "always_during", "eventually_during"
+    predicate: str         # name of predicate (or tuple of two names for "until")
     weight: float          # logic weight
     modality: str          # "REQUIRE" or "PREFER"
     parameters: Dict[str, Any] = field(default_factory=dict)
-    deadline_sec: float = None   # optional: evaluate only over [0, deadline_sec]
-                                 # None means use full trajectory (normal behaviour)
+    time_window: Optional[Tuple[float, float]] = None   # [t_start, t_end] for *_during ops
 
 
 @dataclass

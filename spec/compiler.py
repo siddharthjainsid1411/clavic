@@ -63,24 +63,6 @@ class Compiler:
                 excess = np.maximum(0.0, np.abs(w) - SK_CLIP)
                 total_cost += STIFF_WEIGHT * float(np.mean(excess**2))
 
-            # --- Stiffness rate penalty (penalises steep jumps in tr(K)) ---
-            # The Q ODE is untouched — this is purely a PI2 cost signal.
-            # We penalise large changes in tr(K) between consecutive timesteps,
-            # which physically correspond to sudden torque demands on the robot.
-            #
-            # Implementation: RMS of d(tr(K))/dt along the trajectory.
-            # Normalised by K0 so the penalty is dimensionless.
-            #   smooth traj (rms ~200 N/m/s)  → penalty ≈ 0.1   (small)
-            #   spiky  traj (rms ~5000 N/m/s) → penalty ≈ 2.5   (meaningful)
-            RATE_WEIGHT = 5e-4
-            K0_norm     = 200.0   # nominal stiffness for normalisation
-            if hasattr(trace, 'gains') and trace.gains is not None:
-                K_arr = trace.gains["K"]
-                trK   = np.array([np.trace(K_arr[i]) for i in range(len(K_arr))])
-                dt    = float(trace.time[1] - trace.time[0]) if len(trace.time) > 1 else 0.01
-                dtrK  = np.diff(trK) / dt
-                total_cost += RATE_WEIGHT * float(np.sqrt(np.mean(dtrK**2)))
-
             return total_cost
 
         return objective
@@ -88,40 +70,31 @@ class Compiler:
     def _evaluate_clause(self, trace, clause):
 
         predicate_fn = self.predicate_registry[clause.predicate]
-
-        # --- Deadline slicing ---
-        # If the clause has a deadline_sec, evaluate the predicate only on the
-        # portion of the trajectory up to that time.  The DMP always runs for
-        # the full horizon_sec; the deadline just restricts which part the
-        # temporal logic operator sees.
-        #
-        # Example: AtGoalPose with deadline_sec=1.5 on a horizon_sec=2.0 traj
-        # means "eventually reach goal within the first 1.5s".
-        #
-        # No deadline → use full trace (existing behaviour, backward-compatible).
-        if clause.deadline_sec is not None:
-            import types
-            t = trace.time
-            mask = t <= clause.deadline_sec
-            # Build a lightweight view — only slice numpy arrays
-            sliced = types.SimpleNamespace()
-            sliced.time     = t[mask]
-            sliced.position = trace.position[mask]
-            sliced.velocity = trace.velocity[mask] if trace.velocity is not None else None
-            sliced.gains    = {k: v[mask] for k, v in trace.gains.items()} if trace.gains else None
-            sliced.raw_sk_weights = trace.raw_sk_weights
-            sliced.raw_sd_weights = trace.raw_sd_weights
-            eval_trace = sliced
-        else:
-            eval_trace = trace
-
-        rho_trace = predicate_fn(eval_trace, **clause.parameters)
+        rho_trace = predicate_fn(trace, **clause.parameters)
 
         if clause.operator == "eventually":
             return temporal_logic.eventually(rho_trace)
 
         elif clause.operator == "always":
             return temporal_logic.always(rho_trace)
+
+        elif clause.operator == "always_during":
+            t_start = clause.time_window[0]
+            t_end   = clause.time_window[1]
+            return temporal_logic.always_during(rho_trace, trace.time, t_start, t_end)
+
+        elif clause.operator == "eventually_during":
+            t_start = clause.time_window[0]
+            t_end   = clause.time_window[1]
+            return temporal_logic.eventually_during(rho_trace, trace.time, t_start, t_end)
+
+        elif clause.operator == "until":
+            # Until expects two predicates: (left, right)
+            left_fn  = self.predicate_registry[clause.predicate[0]]
+            right_fn = self.predicate_registry[clause.predicate[1]]
+            rho_phi  = left_fn(trace, **clause.parameters["left_params"])
+            rho_psi  = right_fn(trace, **clause.parameters["right_params"])
+            return temporal_logic.until(rho_phi, rho_psi)
 
         else:
             raise NotImplementedError(

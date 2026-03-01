@@ -1,13 +1,12 @@
 {
-  "horizon_sec": 5.0,
+  "horizon_sec": 2.0,
 
   "clauses": [
     {
       "type": "eventually",
       "predicate": "AtGoalPose",
       "weight": 8.0,
-      "modality": "REQUIRE",
-      "deadline_sec": 4.0
+      "modality": "REQUIRE"
     },
     {
       "type": "always",

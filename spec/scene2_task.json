@@ -1,0 +1,82 @@
+{
+  "horizon_sec": 6.0,
+
+  "phases": [
+    {
+      "label": "approach",
+      "start": [0.55, 0.00, 0.11],
+      "end":   [0.30, 0.55, 0.11],
+      "duration": 2.0
+    },
+    {
+      "label": "hold",
+      "start": [0.30, 0.55, 0.11],
+      "end":   [0.30, 0.55, 0.11],
+      "duration": 2.0,
+      "n_bfs_traj": 11,
+      "n_bfs_slack": 3
+    },
+    {
+      "label": "go_to_goal",
+      "start": [0.30, 0.55, 0.11],
+      "end":   [0.05, 0.72, 0.11],
+      "duration": 2.0
+    }
+  ],
+
+  "clauses": [
+    {
+      "type": "eventually_during",
+      "predicate": "AtWaypoint",
+      "weight": 8.0,
+      "modality": "REQUIRE",
+      "time_window": [0.0, 2.0],
+      "_comment": "Reach waypoint region within phase 1 (0-2s)"
+    },
+    {
+      "type": "always_during",
+      "predicate": "HoldAtWaypoint",
+      "weight": 6.0,
+      "modality": "REQUIRE",
+      "time_window": [2.0, 4.0],
+      "_comment": "Stay at waypoint with zero velocity during phase 2 (2-4s)"
+    },
+    {
+      "type": "eventually",
+      "predicate": "AtGoalPose",
+      "weight": 8.0,
+      "modality": "REQUIRE",
+      "_comment": "Reach final goal eventually (should happen in phase 3)"
+    },
+    {
+      "type": "always",
+      "predicate": "ObstacleAvoidance",
+      "weight": 10.0,
+      "modality": "REQUIRE",
+      "_comment": "Never collide with obstacle"
+    },
+    {
+      "type": "always",
+      "predicate": "VelocityLimit",
+      "weight": 10.0,
+      "modality": "REQUIRE"
+    }
+  ],
+
+  "bindings": {
+    "AtWaypoint.waypoint":   [0.30, 0.55, 0.11],
+    "AtWaypoint.tolerance":  0.05,
+
+    "HoldAtWaypoint.waypoint":        [0.30, 0.55, 0.11],
+    "HoldAtWaypoint.tolerance":       0.05,
+    "HoldAtWaypoint.speed_threshold": 0.05,
+
+    "AtGoalPose.target":    [0.05, 0.72, 0.11],
+    "AtGoalPose.tolerance": 0.05,
+
+    "ObstacleAvoidance.obstacle_position": [0.40, 0.30, 0.11],
+    "ObstacleAvoidance.safe_radius": 0.08,
+
+    "VelocityLimit.vmax": 1.0
+  }
+}

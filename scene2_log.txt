@@ -1,0 +1,28 @@
+Multi-phase policy: 3 phases, theta_dim = 543
+
+Nominal trace: 0.00s → 6.00s  (601 steps)
+  start pos : [0.55 0.   0.11]
+  end pos   : [0.05594933 0.71595445 0.11      ]
+  nominal cost: 2.2888
+
+Starting Optimization ...
+  Update 001 | Min: 1.6838 | Mean: 2.2626 | BestSoFar: 1.6838
+  Update 010 | Min: 0.7143 | Mean: 1.4609 | BestSoFar: 0.6125
+  Update 020 | Min: 0.7231 | Mean: 1.5246 | BestSoFar: 0.3655
+  Update 030 | Min: 0.5076 | Mean: 1.1127 | BestSoFar: 0.3182
+  Update 040 | Min: 0.4677 | Mean: 1.6114 | BestSoFar: 0.3173
+  Update 050 | Min: 0.4465 | Mean: 2.0340 | BestSoFar: 0.3173
+  Update 060 | Min: 1.2940 | Mean: 2.8181 | BestSoFar: 0.3173
+  Update 070 | Min: 0.8094 | Mean: 2.4965 | BestSoFar: 0.3173
+  Update 080 | Min: 0.5795 | Mean: 1.8709 | BestSoFar: 0.3173
+  Update 090 | Min: 1.1203 | Mean: 2.3742 | BestSoFar: 0.3173
+  Update 100 | Min: 0.3202 | Mean: 1.3571 | BestSoFar: 0.1501
+Optimization Complete.
+
+✓ Saved checkpoint to optimal_checkpoint.npz
+Goal reached: Yes at t=5.65s
+Waypoint reached: Yes at t=1.63s
+Min obstacle clearance: -0.2 cm (body=7.8 cm, radius=8 cm)
+Max speed during hold (2-4s): 0.0623 m/s
+
+Saved scene2_result.png

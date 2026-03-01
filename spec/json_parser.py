@@ -10,6 +10,7 @@ def load_taskspec_from_json(path):
 
     horizon_sec = data["horizon_sec"]
     bindings = data.get("bindings", {})
+    phases = data.get("phases", None)       # multi-phase DMP (Scene 2+)
 
     clauses = []
 
@@ -19,15 +20,17 @@ def load_taskspec_from_json(path):
         weight = c["weight"]
         modality = c["modality"]
 
+        # Optional time window for *_during operators
+        time_window = None
+        if "time_window" in c:
+            time_window = tuple(c["time_window"])   # [t_start, t_end]
+
         # Handle unary operators
-        if operator in ["always", "eventually"]:
+        if operator in ["always", "eventually", "always_during", "eventually_during"]:
 
             predicate = c["predicate"]
 
             parameters = extract_parameters(predicate, bindings)
-
-            # Optional per-clause time deadline (None = full trajectory)
-            deadline_sec = c.get("deadline_sec", None)
 
             clause = Clause(
                 operator=operator,
@@ -35,7 +38,7 @@ def load_taskspec_from_json(path):
                 weight=weight,
                 modality=modality,
                 parameters=parameters,
-                deadline_sec=deadline_sec,
+                time_window=time_window
             )
 
         # Handle until operator
@@ -54,7 +57,8 @@ def load_taskspec_from_json(path):
                 predicate=(left, right),
                 weight=weight,
                 modality=modality,
-                parameters=parameters
+                parameters=parameters,
+                time_window=time_window
             )
 
         else:
@@ -62,10 +66,13 @@ def load_taskspec_from_json(path):
 
         clauses.append(clause)
 
-    return TaskSpec(
+    ts = TaskSpec(
         horizon_sec=horizon_sec,
         clauses=clauses
     )
+    # Attach phases if present (used by MultiPhaseCertifiedPolicy)
+    ts.phases = phases
+    return ts
 
 
 def extract_parameters(predicate_name, bindings):
