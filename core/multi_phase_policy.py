@@ -24,6 +24,7 @@ from core.cgms.dynamical_systems import DynamicalSystems
 from core.cgms.orientation_dmp import OrientationDMP
 from core.cgms.quat_utils import quat_normalize
 from core.certified_policy import Trace
+from core.obstacle_projection import ObstacleProjector
 
 
 class MultiPhaseCertifiedPolicy:
@@ -106,6 +107,32 @@ class MultiPhaseCertifiedPolicy:
 
         self.total_theta_dim = offset
         self.DT = DT
+        # Hard obstacle avoidance projector (off by default — backward compatible)
+        self._projector = ObstacleProjector()
+
+    # ------------------------------------------------------------------ #
+    def set_obstacles(self, obstacles):
+        """
+        Register spherical obstacles for hard-constraint projection.
+
+        Parameters
+        ----------
+        obstacles : list of dict, each with keys:
+            "center" : array-like (3,)
+            "radius" : float
+
+        After calling this, every rollout() will project positions outside
+        these spheres BY CONSTRUCTION before building the Trace.
+        CGMS gains (K, D) are computed first by the DMP ODE and are
+        unaffected — only the position/velocity arrays are projected.
+
+        Example
+        -------
+        policy.set_obstacles([
+            {"center": [0.40, 0.30, 0.30], "radius": 0.12},
+        ])
+        """
+        self._projector = ObstacleProjector(obstacles)
 
     # ------------------------------------------------------------------ #
     def parameter_dimension(self):
@@ -245,10 +272,19 @@ class MultiPhaseCertifiedPolicy:
             orientation = np.concatenate(all_quat, axis=0)
             angular_velocity = np.concatenate(all_omega, axis=0)
 
+        # ── Hard obstacle projection (by construction) ─────────────────
+        # Project positions outside all registered obstacle spheres BEFORE
+        # building the Trace.  CGMS gains are untouched — they are computed
+        # by the Cholesky ODE inside each phase's DMP rollout_traj() call
+        # and do not depend on position values.
+        pos_full = np.concatenate(all_pos)
+        vel_full = np.concatenate(all_vel)
+        pos_full, vel_full = self._projector.project(pos_full, vel_full, self.DT)
+
         trace = Trace(
             time=np.concatenate(all_time),
-            position=np.concatenate(all_pos),
-            velocity=np.concatenate(all_vel),
+            position=pos_full,
+            velocity=vel_full,
             gains={
                 "K": np.concatenate(all_K),
                 "D": np.concatenate(all_D),

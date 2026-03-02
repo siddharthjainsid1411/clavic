@@ -2,14 +2,16 @@
   "_description": "Scene 3: Carry-then-Pour with human-proximity per-axis stiffness reduction",
   "_notes": [
     "2-phase task: carry upright -> pour at goal",
-    "Phase 1 (0-7s): carry mug upright from start to goal, avoid obstacle",
+    "Phase 1 (0-7s): carry mug upright from start to goal, avoid obstacle via soft penalty",
     "Phase 2 (7-10s): pour -- tilt 90 deg about Y axis while holding position at goal",
+    "Generic approach: soft obstacle penalty (weight=10) shapes path smoothly",
+    "Hard safety layer: ObstacleProjector in MultiPhaseCertifiedPolicy guarantees clearance",
     "Stiffness reduction near human is handled by compiler implicit cost"
   ],
   "horizon_sec": 10.0,
   "phases": [
     {
-      "label": "carry_to_goal",
+      "label": "carry",
       "start": [0.55, 0.00, 0.30],
       "end":   [0.30, 0.55, 0.30],
       "duration": 7.0,
@@ -50,7 +52,8 @@
       "type": "always",
       "predicate": "ObstacleAvoidance",
       "weight": 20.0,
-      "modality": "REQUIRE"
+      "modality": "REQUIRE",
+      "_comment": "Soft cost shapes path away from obstacle; hard projection guarantees clearance"
     },
     {
       "type": "always",

@@ -87,25 +87,6 @@ class Compiler:
                 excess = np.maximum(0.0, np.abs(w) - SK_CLIP)
                 total_cost += STIFF_WEIGHT * float(np.mean(excess**2))
 
-            # --- SK/SD weight smoothness penalty ---
-            # Root cause of stiffness spikes: adjacent RBF weights in SK/SD networks
-            # vary sharply, causing large |dK/dt| at transitions (measured: 20,931 N/m/s).
-            # Fix: penalise the L2 difference between consecutive weight values.
-            # This is CGMS-safe — it is a cost on parameters only, NOT on the ODE structure.
-            # The Cholesky ODE guarantee K=QᵀQ≻0 is unaffected; PI2 just steers toward
-            # smoother weight profiles.
-            # Scale: SMOOTH_WEIGHT=0.1, typical |Δw|=1.0, ~(n_bfs-1)*6 terms per phase
-            #        → cost ~ 0.1 * 1 = 0.1  (same order as one TL clause ≈ 0.5-2.0)
-            SMOOTH_WEIGHT = 0.1
-            for attr in ('raw_sk_weights', 'raw_sd_weights'):
-                if hasattr(trace, attr) and getattr(trace, attr) is not None:
-                    w = getattr(trace, attr)
-                    # w may be 1-D (all phases concatenated) or 2-D (n_bfs × n_channels)
-                    w = np.atleast_2d(w) if w.ndim == 1 else w
-                    if w.shape[0] > 1:
-                        diffs = w[1:] - w[:-1]
-                        total_cost += SMOOTH_WEIGHT * float(np.mean(diffs**2))
-
             # --- Hard K ceiling penalty ---
             # Safety net ONLY: prevent runaway tr(K) > 3000 N/m.
             # This is a very loose ceiling — it should NOT pull K down during

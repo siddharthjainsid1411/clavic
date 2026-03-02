@@ -5,7 +5,10 @@ Scene 3: Carry-then-Pour with Human-Proximity Per-Axis Stiffness Reduction.
   Phase 1 (0-7 s) : carry mug upright from start to goal, avoid obstacle
   Phase 2 (7-10 s): pour -- tilt 90 deg about Y axis, hold position at goal
 
-Compiler implicit cost: each K_ii < 100 N/m when arm is near human (goal).
+Compiler impli    ax.text(gp[0]+0.03, gp[1]+0.01, gp[2]+0.03, "Human\n(goal)",
+            fontweight="bold", color=C_GOAL)
+
+    # obstacle labelch K_ii < 100 N/m when arm is near human (goal).
 CGMS guarantee K = Q^T Q > 0 is maintained throughout.
 
 3 publication-quality plots (PDF + PNG, 300 dpi):
@@ -51,7 +54,7 @@ OBS_RAD  = 0.10
 Q_UPRIGHT = np.array([1.0, 0.0, 0.0, 0.0])
 Q_POUR    = quat_normalize(np.array([0.70710678, 0.0, 0.70710678, 0.0]))
 
-# 2-phase timing (no hold phase)
+# 2-phase timing: carry (0-7s) + pour (7-10s)
 T_CARRY_END = 7.0
 T_POUR_END  = 10.0
 
@@ -118,6 +121,14 @@ def print_diagnostics(trace, best_cost):
     d_obs     = np.linalg.norm(pos[:, :2] - OBSTACLE[:2], axis=1)
     obs_cm    = (d_obs.min() - OBS_RAD) * 100.0
     K_eig_min = float(min(np.linalg.eigvalsh(K)[0] for K in K_arr))
+
+    # How many carry-phase timesteps were projected (i.e. DMP wanted inside sphere)
+    carry_mask_d = trace.time <= T_CARRY_END
+    pos_carry_d  = pos[carry_mask_d]
+    d_carry_obs  = np.linalg.norm(pos_carry_d - OBSTACLE, axis=1)
+    # After projection all points are at d >= r+margin; check how many are exactly on surface
+    n_projected  = int(np.sum(np.abs(d_carry_obs - (OBS_RAD + 0.02)) < 1e-3))
+
     near_mask = d_goal < HUMAN_PROX_RAD
     ramp_mask = d_goal < HUMAN_RAMP_RAD
 
@@ -130,7 +141,8 @@ def print_diagnostics(trace, best_cost):
     print(f"  Best cost          : {best_cost:.4f}")
     print(f"  Goal reached       : {'YES' if reached else 'NO'}  t={t_reach:.2f} s")
     print(f"  Max speed          : {speed.max():.4f} m/s  (limit 0.8)")
-    print(f"  Obstacle clearance : {obs_cm:.1f} cm  (must be > 0)")
+    print(f"  Obstacle clearance : {obs_cm:.1f} cm  (hard proj r={OBS_RAD+0.02:.2f} m)")
+    print(f"  Pts on proj surface: {n_projected}  (0 = DMP already avoids; >0 = projector active)")
     print(f"  Pour pos drift     : {pour_drift*100:.1f} cm  (target < 5)")
     print(f"  tr(K) range        : [{trK.min():.0f}, {trK.max():.0f}] N/m")
     print(f"  tr(D) range        : [{trD.min():.1f}, {trD.max():.1f}] Ns/m")
@@ -249,8 +261,8 @@ def plot_3d_workspace(trace, best_cost, base="scene3_workspace"):
     ax.plot([sp[0], gp[0]], [sp[1], gp[1]], [sp[2], gp[2]],
             "--", color=C_DASH, lw=1.8, alpha=0.60, label="Shortest path", zorder=2)
 
-    # ── trajectory coloured by phase ──
-    ip = np.searchsorted(t, T_CARRY_END)
+    # ── trajectory coloured by phase (2 phases) ──
+    ip = np.searchsorted(t, T_CARRY_END)   # end of carry phase
     pp = to_plot(pos)
     ax.plot(pp[:ip+1, 0], pp[:ip+1, 1], pp[:ip+1, 2],
             color=C_CARRY, lw=2.2, solid_capstyle="round", zorder=5, label="Carry")
@@ -519,6 +531,162 @@ def plot_orientation_euler(trace, best_cost, base="scene3_orientation"):
 
 
 # ======================================================================
+#  PLOT 4 -- position (xyz) and velocity (dxyz) timeseries
+#   Two-row panel:
+#     Top:    x(t), y(t), z(t)   with obstacle-vicinity shading
+#     Bottom: vx(t), vy(t), vz(t), ||v||(t)  with speed limit reference
+# ======================================================================
+def plot_kinematics(trace, best_cost, base="scene3_kinematics"):
+    pos = trace.position     # (T, 3)
+    vel = trace.velocity     # (T, 3)
+    t   = trace.time
+
+    speed   = np.linalg.norm(vel, axis=1)
+    d_obs   = np.linalg.norm(pos - OBSTACLE, axis=1)
+    d_goal  = np.linalg.norm(pos - GOAL,     axis=1)
+
+    # colour palette — consistent with rest of paper
+    c_x   = "#4C72B0"   # blue
+    c_y   = "#DD8452"   # orange
+    c_z   = "#55A868"   # green
+    c_spd = "#8172B2"   # purple for speed magnitude
+
+    fig, axes = plt.subplots(2, 1, figsize=(10, 7), sharex=True)
+
+    # ── Common background: phase bands ──────────────────────────────
+    for ax in axes:
+        ax.axvspan(0,           T_CARRY_END, alpha=0.025, color=C_CARRY, zorder=0)
+        ax.axvspan(T_CARRY_END, T_POUR_END,  alpha=0.025, color=C_POUR,  zorder=0)
+
+        # Obstacle vicinity: shade when d_obs < (OBS_RAD + 0.05)
+        obs_near = d_obs < (OBS_RAD + 0.05)
+        if np.any(obs_near):
+            starts = np.where(np.diff(obs_near.astype(int)) ==  1)[0]
+            ends   = np.where(np.diff(obs_near.astype(int)) == -1)[0]
+            if obs_near[0]:  starts = np.concatenate([[0], starts])
+            if obs_near[-1]: ends   = np.concatenate([ends, [len(obs_near)-1]])
+            for i, (s, e) in enumerate(zip(starts, ends)):
+                ax.axvspan(t[s], t[e], alpha=0.12, color="#AAAAAA",
+                           label="Near obstacle" if i == 0 else None, zorder=0)
+
+        # Human ramp zone: shade when d_goal < HUMAN_RAMP_RAD
+        ramp_near = d_goal < HUMAN_RAMP_RAD
+        if np.any(ramp_near):
+            s_ramp = np.where(np.diff(ramp_near.astype(int)) ==  1)[0]
+            e_ramp = np.where(np.diff(ramp_near.astype(int)) == -1)[0]
+            if ramp_near[0]:  s_ramp = np.concatenate([[0], s_ramp])
+            if ramp_near[-1]: e_ramp = np.concatenate([e_ramp, [len(ramp_near)-1]])
+            for i, (s, e) in enumerate(zip(s_ramp, e_ramp)):
+                ax.axvspan(t[s], t[e], alpha=0.10, color=C_HUMAN,
+                           label="Human ramp zone" if i == 0 else None, zorder=0)
+
+    # ── Top panel: position xyz ──────────────────────────────────────
+    ax0 = axes[0]
+    ax0.plot(t, pos[:, 0], color=c_x, lw=1.8, label=r"$x(t)$")
+    ax0.plot(t, pos[:, 1], color=c_y, lw=1.8, label=r"$y(t)$")
+    ax0.plot(t, pos[:, 2], color=c_z, lw=1.8, label=r"$z(t)$")
+
+    # Reference lines: start & goal per axis
+    for val, col, ls in [
+        (START[0], c_x, ":"), (START[1], c_y, ":"), (START[2], c_z, ":"),
+        (GOAL[0],  c_x, "--"), (GOAL[1], c_y, "--"), (GOAL[2], c_z, "--"),
+    ]:
+        ax0.axhline(val, color=col, lw=0.7, ls=ls, alpha=0.35)
+
+    # Phase labels
+    ylo0, yhi0 = pos.min() - 0.03, pos.max() + 0.04
+    ax0.set_ylim(ylo0, yhi0)
+    for tx, lb, col in [(3.5, "Carry", C_CARRY), (8.5, "Pour", C_POUR)]:
+        ax0.text(tx, yhi0 - 0.005, lb, fontsize=8, color=col,
+                 ha="center", fontweight="bold", alpha=0.65, va="top")
+
+    ax0.set_ylabel("Position (m)", fontsize=11)
+    ax0.grid(True, alpha=0.25)
+    # Legend: pos axes + shading
+    handles0, labels0 = ax0.get_legend_handles_labels()
+    ax0.legend(handles0, labels0, fontsize=8.5, loc="upper right",
+               framealpha=0.9, edgecolor="lightgrey", fancybox=False, ncol=2)
+
+    # ── Bottom panel: velocity xyz + speed ──────────────────────────
+    ax1 = axes[1]
+    ax1.plot(t, vel[:, 0], color=c_x, lw=1.6, alpha=0.85, label=r"$\dot{x}(t)$")
+    ax1.plot(t, vel[:, 1], color=c_y, lw=1.6, alpha=0.85, label=r"$\dot{y}(t)$")
+    ax1.plot(t, vel[:, 2], color=c_z, lw=1.6, alpha=0.85, label=r"$\dot{z}(t)$")
+    ax1.plot(t, speed,     color=c_spd, lw=2.2, label=r"$\|\dot{\mathbf{p}}\|$  speed")
+
+    # Speed limit reference
+    ax1.axhline( 0.8, color="#333333", ls=":", lw=1.2, alpha=0.65,
+                label=f"$v_{{\\rm max}}$ = 0.8 m/s")
+    ax1.axhline(-0.8, color="#333333", ls=":", lw=1.2, alpha=0.65)
+    ax1.axhline(0.0,  color="#999999", ls="-", lw=0.5, alpha=0.30)
+
+    vhi = max(speed.max(), 0.85) * 1.15
+    ax1.set_ylim(-vhi, vhi)
+
+    ax1.set_xlabel("Time (s)", fontsize=11)
+    ax1.set_ylabel("Velocity (m/s)", fontsize=11)
+    ax1.set_xlim(0, T_POUR_END)
+    ax1.grid(True, alpha=0.25)
+    handles1, labels1 = ax1.get_legend_handles_labels()
+    ax1.legend(handles1, labels1, fontsize=8.5, loc="upper right",
+               framealpha=0.9, edgecolor="lightgrey", fancybox=False, ncol=3)
+
+    # ── Shared title ─────────────────────────────────────────────────
+    fig.suptitle("Scene 3 — Per-axis Position & Velocity", fontsize=12, y=1.01)
+    plt.tight_layout()
+    for ext in ("pdf", "png"):
+        plt.savefig(f"{base}.{ext}", dpi=300, bbox_inches="tight", facecolor="white")
+    print(f"Saved: {base}.pdf / .png")
+    plt.close()
+
+
+# ======================================================================
+#  CSV export — same format as franka_trajectory.csv reference
+#  Columns: x,y,z,dx,dy,dz,
+#           k11,k12,k13,k21,k22,k23,k31,k32,k33,
+#           d11,d12,d13,d21,d22,d23,d31,d32,d33
+# ======================================================================
+def save_trajectory_csv(trace, csv_path="scene3_trajectory.csv"):
+    import csv
+    pos = trace.position   # (T, 3)
+    vel = trace.velocity   # (T, 3)
+    K_arr = trace.gains["K"]   # list of (3,3)
+    D_arr = trace.gains["D"]   # list of (3,3)
+    T = len(trace.time)
+
+    header = [
+        "x", "y", "z",
+        "dx", "dy", "dz",
+        "k11", "k12", "k13",
+        "k21", "k22", "k23",
+        "k31", "k32", "k33",
+        "d11", "d12", "d13",
+        "d21", "d22", "d23",
+        "d31", "d32", "d33",
+    ]
+
+    with open(csv_path, "w", newline="") as f:
+        writer = csv.writer(f)
+        writer.writerow(header)
+        for i in range(T):
+            K = K_arr[i]   # (3,3)
+            D = D_arr[i]   # (3,3)
+            row = [
+                f"{pos[i,0]:.8f}", f"{pos[i,1]:.8f}", f"{pos[i,2]:.8f}",
+                f"{vel[i,0]:.8f}", f"{vel[i,1]:.8f}", f"{vel[i,2]:.8f}",
+                f"{K[0,0]:.8f}", f"{K[0,1]:.8f}", f"{K[0,2]:.8f}",
+                f"{K[1,0]:.8f}", f"{K[1,1]:.8f}", f"{K[1,2]:.8f}",
+                f"{K[2,0]:.8f}", f"{K[2,1]:.8f}", f"{K[2,2]:.8f}",
+                f"{D[0,0]:.8f}", f"{D[0,1]:.8f}", f"{D[0,2]:.8f}",
+                f"{D[1,0]:.8f}", f"{D[1,1]:.8f}", f"{D[1,2]:.8f}",
+                f"{D[2,0]:.8f}", f"{D[2,1]:.8f}", f"{D[2,2]:.8f}",
+            ]
+            writer.writerow(row)
+
+    print(f"Saved: {csv_path}  ({T} rows)")
+
+
+# ======================================================================
 #  main
 # ======================================================================
 def main():
@@ -526,6 +694,14 @@ def main():
     assert taskspec.phases is not None
 
     policy    = MultiPhaseCertifiedPolicy(taskspec.phases, K0=300.0, D0=30.0)
+
+
+    # ── Hard obstacle avoidance by construction ────────────────────────
+    # Register obstacle sphere — every rollout() projects positions outside
+    # this sphere before the Trace is built.  No soft penalty needed.
+    policy.set_obstacles([
+        {"center": OBSTACLE.tolist(), "radius": OBS_RAD + 0.02},  # +2 cm margin
+    ])
     theta_dim = policy.parameter_dimension()
     print(f"Multi-phase policy: {len(taskspec.phases)} phases, theta_dim={theta_dim}")
     print(f"  has_orientation: {policy.has_orientation}")
@@ -538,6 +714,23 @@ def main():
     compiler     = Compiler(predicate_registry,
                             human_position=HUMAN_POS,
                             human_proximity_radius=HUMAN_PROX_RAD)
+
+    # ── Two-layer obstacle avoidance ──────────────────────────────────
+    # Layer 1 (soft, inside PIBB loop):
+    #   ObstacleAvoidance clause in scene3_task.json (weight=6, modality=REQUIRE)
+    #   nudges the DMP weights toward paths that go around the obstacle.
+    #   The optimizer sees a smooth cost signal and shapes the trajectory.
+    #
+    # Layer 2 (hard, inside every policy.rollout() call):
+    #   ObstacleProjector in MultiPhaseCertifiedPolicy.rollout() radially
+    #   projects every position point outside the sphere BEFORE the Trace
+    #   is built.  This runs unconditionally — even if layer 1 fails to
+    #   route around, the projection guarantees ||p−c|| ≥ r+margin always.
+    #
+    # Result: the compiler cost is evaluated on the ALREADY-PROJECTED
+    # trajectory, so PIBB naturally learns to produce paths that don't
+    # need much projection (smooth arc), while the hard guarantee holds
+    # regardless.  No via-points, no hand-tuned corridors needed.
     objective_fn = compiler.compile(taskspec)
 
     trace0 = policy.rollout(np.zeros(theta_dim))
@@ -553,6 +746,7 @@ def main():
         sigma_ori=1.5,
     )
     # dampen pour phase position noise (hold position while rotating)
+    # Pour is phase index 1 (0=carry, 1=pour)
     pour_off = policy.offsets[1]
     pour_dim = policy.theta_dims[1]
     sigma_init[pour_off:pour_off + pour_dim] *= 0.05
@@ -560,12 +754,13 @@ def main():
     optimizer = PIBB(theta=theta_init, sigma=sigma_init, beta=8.0, decay=0.99)
 
     N_SAMPLES = 30
-    N_UPDATES = 50
+    N_UPDATES = 70
     best_cost  = float("inf")
     best_theta = theta_init.copy()
 
     print(f"\nPIBB: {N_UPDATES} updates x {N_SAMPLES} samples")
-    print(f"  K penalty: ramp [d < {HUMAN_RAMP_RAD} m], hard limit {K_AXIS_LIMIT:.0f} N/m at [d < {HUMAN_PROX_RAD} m]")
+    print(f"  K penalty  : ramp [d < {HUMAN_RAMP_RAD} m], hard limit {K_AXIS_LIMIT:.0f} N/m at [d < {HUMAN_PROX_RAD} m]")
+    print(f"  Obs avoid  : soft weight=6 (JSON) + hard projector r={OBS_RAD+0.02:.2f} m (always on)")
 
     for upd in range(N_UPDATES):
         samples = optimizer.sample(N_SAMPLES)
@@ -588,14 +783,16 @@ def main():
     trace_final = policy.rollout(best_theta)
     save_checkpoint(best_theta, taskspec.horizon_sec, best_cost, trace_final,
                     checkpoint_path="scene3_demo_checkpoint.npz")
+    save_trajectory_csv(trace_final, csv_path="scene3_trajectory.csv")
     print_diagnostics(trace_final, best_cost)
 
     plot_3d_workspace(trace_final, best_cost)
     plot_2d_topdown(trace_final, best_cost)
     plot_stiffness(trace_final, best_cost)
     plot_orientation_euler(trace_final, best_cost)
+    plot_kinematics(trace_final, best_cost)
 
-    print("Scene 3 done -- 4 plots saved as PDF + PNG.")
+    print("Scene 3 done -- 5 plots saved as PDF + PNG.")
 
 
 if __name__ == "__main__":
