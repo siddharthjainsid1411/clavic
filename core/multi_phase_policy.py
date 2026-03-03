@@ -113,26 +113,56 @@ class MultiPhaseCertifiedPolicy:
     # ------------------------------------------------------------------ #
     def set_obstacles(self, obstacles):
         """
-        Register spherical obstacles for hard-constraint projection.
+        Register spherical obstacles for:
+          1. Hard-constraint radial projection (post-rollout backstop).
+          2. Repulsive forcing inside the DMP ODE (smooth path routing).
 
         Parameters
         ----------
         obstacles : list of dict, each with keys:
-            "center" : array-like (3,)
-            "radius" : float
+            "center"   : array-like (3,)
+            "radius"   : float             — safe clearance radius
+            "strength" : float (optional)  — repulsion strength (default 0.05)
+            "infl_factor": float (optional)— influence zone = radius * infl_factor
+                                             (default 2.5)
 
-        After calling this, every rollout() will project positions outside
-        these spheres BY CONSTRUCTION before building the Trace.
-        CGMS gains (K, D) are computed first by the DMP ODE and are
-        unaffected — only the position/velocity arrays are projected.
+        The DMP repulsion steers the spring-damper ODE organically so the
+        trajectory routes AROUND the obstacle — reducing or eliminating the
+        C-turn arc caused by the straight minimum-jerk path passing through.
+        The radial projector remains as the hard backstop guarantee:
+            ∀t: ||p(t) − c|| ≥ radius   — by construction.
 
         Example
         -------
         policy.set_obstacles([
-            {"center": [0.40, 0.30, 0.30], "radius": 0.12},
+            {"center": [0.40, 0.30, 0.30], "radius": 0.12,
+             "strength": 0.05, "infl_factor": 2.5},
         ])
         """
+        # ── Layer 1: hard projector (post-rollout, always on) ──────────
         self._projector = ObstacleProjector(obstacles)
+
+        # ── Layer 2: DMP repulsive forcing (inside ODE) ────────────────
+        # Build the per-obstacle dict that dmp_with_gain.rollout_traj() reads.
+        # Default strength / influence tuned for our scene geometry:
+        #   strength=0.05  → gentle enough not to overshoot the goal
+        #   infl_factor=2.5 → influence zone starts at 2.5× safe_radius
+        rep_obs = []
+        for obs in obstacles:
+            c      = np.asarray(obs["center"], float)
+            r      = float(obs["radius"])
+            s      = float(obs.get("strength",    0.05))
+            ifact  = float(obs.get("infl_factor", 2.5))
+            rep_obs.append({
+                "center":  c,
+                "radius":  r,
+                "r_infl":  r * ifact,
+                "strength": s,
+            })
+
+        # Inject into every phase DMP
+        for dmp in self.dmps:
+            dmp.repulsive_obstacles = rep_obs
 
     # ------------------------------------------------------------------ #
     def parameter_dimension(self):

@@ -697,10 +697,15 @@ def main():
 
 
     # ── Hard obstacle avoidance by construction ────────────────────────
-    # Register obstacle sphere — every rollout() projects positions outside
-    # this sphere before the Trace is built.  No soft penalty needed.
+    # Register obstacle sphere — two-layer avoidance:
+    #   Layer 1 (DMP repulsion, inside ODE): steers the spring-damper attractor
+    #     organically around the obstacle → smooth arc, no C-turn.
+    #     strength=0.05, infl_factor=2.0 (influence zone = 2×r = 0.24 m).
+    #   Layer 2 (hard radial projector, post-rollout): backstop guarantee.
+    #     ∀t: ||p(t)-c|| ≥ r_safe  — by construction, always on.
     policy.set_obstacles([
-        {"center": OBSTACLE.tolist(), "radius": OBS_RAD + 0.02},  # +2 cm margin
+        {"center": OBSTACLE.tolist(), "radius": OBS_RAD + 0.02,  # r_safe=0.12 m
+         "strength": 0.05, "infl_factor": 2.0},
     ])
     theta_dim = policy.parameter_dimension()
     print(f"Multi-phase policy: {len(taskspec.phases)} phases, theta_dim={theta_dim}")
@@ -724,13 +729,13 @@ def main():
     # Layer 2 (hard, inside every policy.rollout() call):
     #   ObstacleProjector in MultiPhaseCertifiedPolicy.rollout() radially
     #   projects every position point outside the sphere BEFORE the Trace
-    #   is built.  This runs unconditionally — even if layer 1 fails to
-    #   route around, the projection guarantees ||p−c|| ≥ r+margin always.
+    #   is built.  This runs unconditionally — hard backstop guarantee.
     #
-    # Result: the compiler cost is evaluated on the ALREADY-PROJECTED
-    # trajectory, so PIBB naturally learns to produce paths that don't
-    # need much projection (smooth arc), while the hard guarantee holds
-    # regardless.  No via-points, no hand-tuned corridors needed.
+    # Three-layer obstacle avoidance:
+    #   Layer 1 — DMP repulsion (inside ODE): smoothly bends the spring-damper
+    #     attractor around the obstacle.  Reduces/eliminates C-turn arc.
+    #   Layer 2 — Soft cost (ObstacleAvoidance clause in JSON): PIBB reward signal.
+    #   Layer 3 — Radial projector (post-rollout): hard guarantee ∀t: ||p-c||≥r.
     objective_fn = compiler.compile(taskspec)
 
     trace0 = policy.rollout(np.zeros(theta_dim))
@@ -760,7 +765,7 @@ def main():
 
     print(f"\nPIBB: {N_UPDATES} updates x {N_SAMPLES} samples")
     print(f"  K penalty  : ramp [d < {HUMAN_RAMP_RAD} m], hard limit {K_AXIS_LIMIT:.0f} N/m at [d < {HUMAN_PROX_RAD} m]")
-    print(f"  Obs avoid  : soft weight=6 (JSON) + hard projector r={OBS_RAD+0.02:.2f} m (always on)")
+    print(f"  Obs avoid  : DMP repulsion (str=0.05, infl=2.0) + soft cost + hard projector r={OBS_RAD+0.02:.2f} m")
 
     for upd in range(N_UPDATES):
         samples = optimizer.sample(N_SAMPLES)

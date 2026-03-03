@@ -55,6 +55,14 @@ class DMPWithGainScheduling:
         self.slack_mag  = float(slack_mag)
         self.slack_rate = float(slack_rate_limit)
         self.Q_init     = None   # set by multi_phase_policy for phase continuity
+        # Repulsive obstacles: list of {"center": np.array(3), "radius": float,
+        #                                "strength": float}
+        # Injected by MultiPhaseCertifiedPolicy.set_obstacles() before rollout.
+        # Applied INSIDE the DMP ODE so the spring-damper attractor routes around
+        # the obstacle organically — goal-seeking is preserved.
+        # The radial projector in obstacle_projection.py remains as the hard
+        # backstop guarantee; this repulsion only shapes the DMP trajectory.
+        self.repulsive_obstacles = []
         self.ds         = DynamicalSystems(self.tau)
         
         y, yd, ydd, ts  = MinimumJerk(self.start, self.end, self.tau, self.dt).generate()
@@ -153,7 +161,36 @@ class DMPWithGainScheduling:
             k     = (d**2)/4.0
             spring = k * (y - goal)
             damper = d * self.tau * yd
-            return ((fhat * gate) - (spring + damper) / m) / (self.tau**2)
+            net_accel = ((fhat * gate) - (spring + damper) / m) / (self.tau**2)
+
+            # ── Repulsive obstacle forcing (inside ODE — shapes the path) ──
+            # For each registered obstacle, add a repulsive acceleration when
+            # y is within the influence zone (d < r * INFL_FACTOR).
+            # Repulsion tapers smoothly: zero at influence boundary, max at surface.
+            # This steers the spring-damper ODE organically — the goal attractor
+            # remains active and the path routes AROUND the obstacle.
+            # The K=Q^T Q Cholesky ODE runs AFTER this position loop — untouched.
+            for obs in self.repulsive_obstacles:
+                diff = y - obs["center"]
+                dist = float(np.linalg.norm(diff))
+                r    = obs["radius"]
+                r_infl = obs["r_infl"]
+                if dist < 1e-9:
+                    # Degenerate: exactly at centre — push in +X+Y direction
+                    net_accel += obs["strength"] * np.array([1.0, 1.0, 0.0]) / np.sqrt(2.0)
+                elif dist < r_infl:
+                    n      = diff / dist                          # outward unit normal
+                    # Smooth cubic taper: alpha=1 at sphere surface (dist=r), 0 at r_infl
+                    # alpha = ((r_infl - dist) / (r_infl - r))^3
+                    # Bounded — no 1/dist^2 singularity.
+                    # Strength is scaled by DMP spring constant so the repulsion is
+                    # commensurable with the attractor force (k = d^2/4 = 100 here).
+                    alpha  = ((r_infl - dist) / (r_infl - r)) ** 3
+                    k_dmp  = (self.d ** 2) / 4.0   # DMP spring constant
+                    mag    = obs["strength"] * k_dmp * alpha
+                    net_accel += mag * n
+
+            return net_accel
 
         for k in range(T-1):
             t0 = ts[k]; h = ts[k+1] - ts[k]
