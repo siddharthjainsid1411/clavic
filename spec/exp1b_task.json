@@ -8,21 +8,21 @@
     "This demonstrates the difference between HARD (always respected) and",
     "SOFT (can be violated under time/cost pressure).",
     "Human : [0.30, 0.30, 0.30]",
-    "Start : [0.46283, -0.20737, 0.24566]",
-    "Goal  : [0.32771, 0.82123, 0.24566]"
+    "Start : [0.37166, -0.32794, 0.24566]",
+    "Goal  : [0.27319, 0.68110, 0.24566]"
   ],
   "horizon_sec": 2.0,
   "phases": [
     {
       "label": "carry",
       "start": [
-        0.46283,
-        -0.20737,
+        0.37166,
+        -0.32794,
         0.24566
       ],
       "end": [
-        0.32771,
-        0.82123,
+        0.27319,
+        0.68110,
         0.24566
       ],
       "duration": 2.0,
@@ -85,8 +85,8 @@
   ],
   "bindings": {
     "AtGoal.waypoint": [
-      0.32771,
-      0.82123,
+      0.27319,
+      0.68110,
       0.24566
     ],
     "AtGoal.tolerance": 0.05,

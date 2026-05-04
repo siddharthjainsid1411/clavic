@@ -26,8 +26,8 @@
   "phases": [
     {
       "label": "carry",
-      "start": [0.46283, -0.20737, 0.24566], 
-      "end":   [0.32771, 0.82123, 0.24566],  
+      "start": [0.37166, -0.32794, 0.24566], 
+      "end":   [0.27319, 0.68110, 0.24566],  
       "duration": 7.0,
       "start_quat": [0.50540, -0.49933, 0.49576, 0.49945],
       "end_quat":   [0.50540, -0.49933, 0.49576, 0.49945],
@@ -35,8 +35,8 @@
     },
     {
       "label": "hold",
-      "start": [0.32771, 0.82123, 0.24566],
-      "end":   [0.32771, 0.82123, 0.24566],
+      "start": [0.27319, 0.68110, 0.24566],
+      "end":   [0.27319, 0.68110, 0.24566],
       "duration": 3.0,
       "n_bfs_traj": 11,
       "n_bfs_slack": 3,
@@ -91,10 +91,10 @@
     }
   ],
   "bindings": {
-    "AtWaypoint.waypoint":   [0.32771, 0.82123, 0.24566],
+    "AtWaypoint.waypoint":   [0.27319, 0.68110, 0.24566],
     "AtWaypoint.tolerance":  0.04,
 
-    "HoldAtWaypoint.waypoint":        [0.32771, 0.82123, 0.24566],
+    "HoldAtWaypoint.waypoint":        [0.27319, 0.68110, 0.24566],
     "HoldAtWaypoint.tolerance":       0.05,
     "HoldAtWaypoint.speed_threshold": 0.05,
 

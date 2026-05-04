@@ -15,9 +15,9 @@
     "  - Human proximity stiffness reduction active at final goal",
     "",
     "Geometry:",
-    "  Start    : [0.46283, -0.20737, 0.24566]",
+    "  Start    : [0.37166, -0.32794, 0.24566]",
     "  Waypoint : [0.66840, 0.33978, 0.21647]  (measured hold point #7)",
-    "  Goal     : [0.32771, 0.82123, 0.24566]",
+    "  Goal     : [0.27319, 0.68110, 0.24566]",
     "  Obstacle : [0.34532, 0.20459, 0.00000]  (laptop center from corners #2-#5)"
   ],
   "horizon_sec": 11.0,
@@ -25,8 +25,8 @@
     {
       "label": "carry",
       "start": [
-        0.46283,
-        -0.20737,
+        0.37166,
+        -0.32794,
         0.24566
       ],
       "end": [
@@ -86,8 +86,8 @@
         0.21647
       ],
       "end": [
-        0.32771,
-        0.82123,
+        0.27319,
+        0.68110,
         0.24566
       ],
       "duration": 4.0,
@@ -195,14 +195,14 @@
     "HoldAtWaypoint.tolerance": 0.05,
     "HoldAtWaypoint.speed_threshold": 0.05,
     "AtGoal.waypoint": [
-      0.32771,
-      0.82123,
+      0.27319,
+      0.68110,
       0.24566
     ],
     "AtGoal.tolerance": 0.04,
     "HoldAtGoal.waypoint": [
-      0.32771,
-      0.82123,
+      0.27319,
+      0.68110,
       0.24566
     ],
     "HoldAtGoal.tolerance": 0.05,

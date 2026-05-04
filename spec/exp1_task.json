@@ -8,8 +8,8 @@
     "  HumanComfortDistance (PREFER, weight=15.0): comfort radius 0.19 m \u2014 soft, high-weight",
     "  Per-axis stiffness reduction via Compiler (ramp from 3xr_comfort down to r_comfort)",
     "Geometry:",
-    "  Start : [0.46283, -0.20737, 0.24566]",
-    "  Goal  : [0.32771, 0.82123, 0.24566]",
+    "  Start : [0.37166, -0.32794, 0.24566]",
+    "  Goal  : [0.27319, 0.68110, 0.24566]",
     "  Human : [0.30, 0.30, 0.30]"
   ],
   "horizon_sec": 10.0,
@@ -17,13 +17,13 @@
     {
       "label": "carry",
       "start": [
-        0.46283,
-        -0.20737,
+        0.37166,
+        -0.32794,
         0.24566
       ],
       "end": [
-        0.32771,
-        0.82123,
+        0.27319,
+        0.68110,
         0.24566
       ],
       "duration": 10.0,
@@ -86,8 +86,8 @@
   ],
   "bindings": {
     "AtGoal.waypoint": [
-      0.32771,
-      0.82123,
+      0.27319,
+      0.68110,
       0.24566
     ],
     "AtGoal.tolerance": 0.05,

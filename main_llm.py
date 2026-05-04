@@ -619,7 +619,7 @@ def main():
     # ── API key (paste directly here OR leave "" to use env var) ──────────
     # You can also set it in your shell: export GEMINI_API_KEY="AIza..."
     # Get a free key at: https://aistudio.google.com/app/apikey
-    GEMINI_API_KEY_INLINE = "AIzaSyB8qu5oSliu5zoYlkrlXLzkLswhDZhLqYY"  
+    GEMINI_API_KEY_INLINE = "your Gemini API key here (or leave empty to use env var)"  
 
     # ── Gemini model ──────────────────────────────────────────────────────
     # "gemini-2.0-flash"              — fast, free tier, good for most tasks
