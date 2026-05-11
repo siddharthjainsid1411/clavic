@@ -62,7 +62,7 @@ class MultiPhaseCertifiedPolicy:
         self.offsets = []            # cumulative offsets into flat theta
         self.has_orientation = False # True if ANY phase has quaternions
 
-        DT    = 0.001
+        DT    = 0.01
         ALPHA = 0.05
         H     = np.eye(3)
 
