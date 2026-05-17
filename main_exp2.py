@@ -26,6 +26,7 @@ Plots (PNG only, 300 dpi):
     6. scene4_kinematics.png  — Position & velocity time-series
     7. scene4_angular_velocity.png — omega norm vs time
     8. scene4_velocity_cbf.png — speed vs time-windowed vmax
+    9. scene4_acceleration.png — linear & angular acceleration
 """
 
 import numpy as np
@@ -792,6 +793,68 @@ def plot_velocity_cbf(trace, best_cost, base="exp2_velocity_cbf"):
     plt.close()
 
 
+# =====================================================================
+#  PLOT 8 — linear and angular acceleration
+# =====================================================================
+def plot_acceleration(trace, best_cost, base="exp2_acceleration"):
+    t = trace.time
+    if trace.velocity is None:
+        print("No velocity — skipping acceleration plot.")
+        return
+    vel = trace.velocity
+    acc = np.gradient(vel, t, axis=0)
+    acc_norm = np.linalg.norm(acc, axis=1)
+
+    if trace.angular_velocity is not None:
+        omega = trace.angular_velocity
+        alpha = np.gradient(omega, t, axis=0)
+        alpha_norm = np.linalg.norm(alpha, axis=1)
+    else:
+        alpha = None
+        alpha_norm = None
+
+    fig, axes = plt.subplots(2, 1, figsize=(10, 7), sharex=True)
+    for ax in axes:
+        ax.axvspan(0,            T_CARRY_END, alpha=0.025, color=C_CARRY, zorder=0)
+        ax.axvspan(T_CARRY_END,  T_HOLD_END,  alpha=0.040, color=C_HOLD,  zorder=0)
+        ax.axvspan(T_HOLD_END,   T_CONT_END,  alpha=0.025, color=C_CONT,  zorder=0)
+        for tv in [T_CARRY_END, T_HOLD_END]:
+            ax.axvline(tv, color="#888888", lw=0.8, ls="--", alpha=0.50)
+
+    ax0, ax1 = axes
+    ax0.plot(t, acc[:,0], color=C_KX, lw=1.4, alpha=0.75, label=r"$\ddot x$")
+    ax0.plot(t, acc[:,1], color=C_KY, lw=1.4, alpha=0.75, label=r"$\ddot y$")
+    ax0.plot(t, acc[:,2], color=C_KZ, lw=1.4, alpha=0.75, label=r"$\ddot z$")
+    ax0.plot(t, acc_norm, color="#8172B2", lw=2.0, label=r"$\|\ddot p\|$")
+    ax0.axhline(0.0, color="#999999", ls="-", lw=0.5, alpha=0.30)
+    ax0.set_ylabel("Linear accel (m/s²)", fontsize=11)
+    ax0.set_title(f"{SCENE_LABEL}\nLinear & angular acceleration", fontsize=9)
+    ax0.grid(True, alpha=0.25)
+    ax0.legend(fontsize=9, loc="upper right", framealpha=0.9,
+               edgecolor="lightgrey", fancybox=False, ncol=2)
+
+    if alpha is not None:
+        ax1.plot(t, alpha[:,0], color=C_KX, lw=1.4, alpha=0.75, label=r"$\dot\omega_x$")
+        ax1.plot(t, alpha[:,1], color=C_KY, lw=1.4, alpha=0.75, label=r"$\dot\omega_y$")
+        ax1.plot(t, alpha[:,2], color=C_KZ, lw=1.4, alpha=0.75, label=r"$\dot\omega_z$")
+        ax1.plot(t, alpha_norm, color="#8172B2", lw=2.0, label=r"$\|\dot\omega\|$")
+        ax1.axhline(0.0, color="#999999", ls="-", lw=0.5, alpha=0.30)
+        ax1.set_ylabel("Angular accel (rad/s²)", fontsize=11)
+        ax1.grid(True, alpha=0.25)
+        ax1.legend(fontsize=9, loc="upper right", framealpha=0.9,
+                   edgecolor="lightgrey", fancybox=False, ncol=2)
+    else:
+        ax1.text(0.5, 0.5, "No angular velocity", transform=ax1.transAxes,
+                 ha="center", va="center", fontsize=10, color="#666666")
+
+    ax1.set_xlabel("Time (s)", fontsize=11)
+    ax1.set_xlim(0, T_CONT_END)
+    plt.tight_layout()
+    plt.savefig(f"{base}.png", dpi=300, bbox_inches="tight", facecolor="white")
+    print(f"Saved: {base}.png")
+    plt.close()
+
+
 # ======================================================================
 #  CSV export
 # ======================================================================
@@ -968,8 +1031,9 @@ def main():
     plot_kinematics(trace_final, best_cost)
     plot_angular_velocity(trace_final, best_cost)
     plot_velocity_cbf(trace_final, best_cost)
+    plot_acceleration(trace_final, best_cost)
 
-    print("Exp 2 done — 8 plots saved as PNG.")
+    print("Exp 2 done — 9 plots saved as PNG.")
 
 
 if __name__ == "__main__":

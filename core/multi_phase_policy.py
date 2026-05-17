@@ -389,6 +389,8 @@ class MultiPhaseCertifiedPolicy:
         all_angular_velocity_cbf = []
 
         t_offset = 0.0    # global time offset for concatenation
+        prev_vel_end = None
+        prev_omega_end = None
 
         for idx, (dmp, ori_dmp, sizes, tdim) in enumerate(
             zip(self.dmps, self.ori_dmps, self.sizes_list, self.theta_dims)
@@ -413,6 +415,10 @@ class MultiPhaseCertifiedPolicy:
             dmp.T   = dmp.ts.size
             dmp.ds  = DynamicalSystems(dur)
             dmp.time_offset = t_offset
+            if prev_vel_end is None:
+                dmp.v_init = np.zeros(3)
+            else:
+                dmp.v_init = prev_vel_end
 
             # --- Slice theta: [traj_xyz | ori_xyz | SD | SK] ---
             n_traj, n_sd, n_sk = sizes
@@ -442,6 +448,7 @@ class MultiPhaseCertifiedPolicy:
             K     = plan["K"]
             D     = plan["D"]
             velocity_cbf = plan.get("safety", {}).get("velocity_cbf", None)
+            prev_vel_end = yd[-1].copy()
 
             # Pass final Q of this phase as initial Q of next phase → no jerk at boundary
             if idx + 1 < len(self.dmps):
@@ -465,6 +472,10 @@ class MultiPhaseCertifiedPolicy:
                 ori_dmp.time_offset = t_offset
                 ori_dmp.orientation_hocbf_configs = self.orientation_hocbf_configs
                 ori_dmp.angular_velocity_cbf_configs = self.angular_velocity_cbf_configs
+                if prev_omega_end is None:
+                    ori_dmp.omega_init = np.zeros(3)
+                else:
+                    ori_dmp.omega_init = prev_omega_end
                 ori_dmp.tau = dur
                 ori_dmp.ts  = np.arange(0.0, dur + 1e-12, ori_dmp.dt)
                 ori_dmp.T   = ori_dmp.ts.size
@@ -473,6 +484,7 @@ class MultiPhaseCertifiedPolicy:
                 ori_plan = ori_dmp.rollout()
                 q_des = ori_plan["q_des"]
                 omega = ori_plan["omega"]
+                prev_omega_end = omega[-1].copy()
                 orientation_hocbf = ori_plan.get("safety", {}).get(
                     "orientation_hocbf", None
                 )
@@ -482,6 +494,7 @@ class MultiPhaseCertifiedPolicy:
             else:
                 orientation_hocbf = None
                 angular_velocity_cbf = None
+                prev_omega_end = None
 
             # For phases after the first, drop the first timestep to
             # avoid duplicate time=boundary points.

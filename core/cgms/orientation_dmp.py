@@ -55,6 +55,7 @@ class OrientationDMP:
         self.time_offset = 0.0
         self.orientation_hocbf_configs = []
         self.angular_velocity_cbf_configs = []
+        self.omega_init = None
 
         # 3 independent RBF networks — one per tangent-space axis
         self.rbf_ori = [
@@ -114,6 +115,8 @@ class OrientationDMP:
         q_traj = np.zeros((T, 4))
         omega  = np.zeros((T, 3))
         q_traj[0] = self.q_start.copy()
+        if self.omega_init is not None:
+            omega[0] = np.asarray(self.omega_init, dtype=float).reshape(3)
         hocbf_h = np.full(T, np.nan)
         hocbf_hdot = np.full(T, np.nan)
         hocbf_psi1 = np.full(T, np.nan)

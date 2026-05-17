@@ -57,6 +57,7 @@ class DMPWithGainScheduling:
         self.slack_rate = float(slack_rate_limit)
         self.Q_init     = None   # set by multi_phase_policy for phase continuity
         self.time_offset = 0.0   # global time offset set by multi_phase_policy
+        self.v_init     = None   # initial velocity (optional, for phase continuity)
         # Repulsive obstacles: list of {"center": np.array(3), "radius": float,
         #                                "strength": float}
         # Injected by MultiPhaseCertifiedPolicy.set_obstacles() before rollout.
@@ -156,6 +157,8 @@ class DMPWithGainScheduling:
         yd   = np.zeros((T,3))
         ydd  = np.zeros((T,3))
         y[0] = self.start
+        if self.v_init is not None:
+            yd[0] = np.asarray(self.v_init, dtype=float).reshape(3)
         velocity_cbf = None if sample_unsafe else self.velocity_cbf_config
         cbf_h = np.full(T, np.nan)
         cbf_lhs = np.full(T, np.nan)
