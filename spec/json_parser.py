@@ -12,10 +12,20 @@ _OBSTACLE_PREDICATES = {
 def _geometry_from_modality(modality):
     """
     Deterministic geometry policy:
-      HARD             -> cylinder_infinite
-      REQUIRE / PREFER -> sphere
+      HARD                  -> cylinder_infinite
+      SOFT / PREFER / legacy REQUIRE -> sphere
     """
     return "cylinder_infinite" if str(modality).upper() == "HARD" else "sphere"
+
+
+def _normalize_modality(modality):
+    """Map legacy modality names onto the HARD/SOFT architecture."""
+    modality = str(modality).upper()
+    if modality == "REQUIRE":
+        return "SOFT"
+    if modality == "PREFER":
+        return "SOFT"
+    return modality
 
 
 def _compute_cover_from_shape_points(shape_points, geometry):
@@ -66,7 +76,8 @@ def load_taskspec_from_json(path):
 
         operator = c["type"]
         weight   = c["weight"]
-        modality = c["modality"]   # "HARD", "REQUIRE", or "PREFER"
+        raw_modality = c["modality"]
+        modality = _normalize_modality(raw_modality)  # "HARD" or "SOFT"
 
         time_window = None
         if "time_window" in c:
@@ -75,6 +86,10 @@ def load_taskspec_from_json(path):
         if operator in ["always", "eventually", "always_during", "eventually_during"]:
 
             predicate = c["predicate"]
+            if predicate in ("VelocityLimit", "OrientationLimit", "AngularVelocityLimit") and str(raw_modality).upper() not in ("SOFT", "PREFER"):
+                # Runtime safety predicates by default.  Legacy REQUIRE specs
+                # are promoted to HARD CBF/HOCBF enforcement.
+                modality = "HARD"
             parameters = extract_parameters(predicate, bindings)
 
             # For obstacle-like predicates, geometry is deterministic by modality.

@@ -19,6 +19,11 @@ we keep them identical for simplicity).
 """
 
 import numpy as np
+from core.cbf_filter import (
+    AngularVelocityCBFConfig,
+    OrientationHOCBFConfig,
+    VelocityCBFConfig,
+)
 from core.cgms.dmp_with_gain import DMPWithGainScheduling
 from core.cgms.dynamical_systems import DynamicalSystems
 from core.cgms.orientation_dmp import OrientationDMP
@@ -107,14 +112,22 @@ class MultiPhaseCertifiedPolicy:
 
         self.total_theta_dim = offset
         self.DT = DT
+        self.velocity_cbf_config = None
+        self.orientation_hocbf_configs = []
+        self.angular_velocity_cbf_configs = []
         # Hard obstacle avoidance projector (off by default — backward compatible)
         self._projector = ObstacleProjector()
 
     # ------------------------------------------------------------------ #
     def setup_hard_obstacles_from_taskspec(self, taskspec):
         """
-        Automatically wire Layers 1+2 (DMP repulsion + radial projector) for
-        all clauses declared with modality="HARD" in the JSON task spec.
+        Automatically wire hard runtime safety from the JSON task spec.
+
+        This keeps the existing method name for backward compatibility with
+        current experiment scripts.  It now performs two independent actions:
+
+        * obstacle-like HARD predicates -> DMP repulsion + radial projector
+        * VelocityLimit safety predicates -> runtime velocity CBF
 
         Call this immediately after constructing the policy, before rollout.
         The obstacle specs (center, radius, strength, infl_factor) are
@@ -129,6 +142,109 @@ class MultiPhaseCertifiedPolicy:
         specs = getattr(taskspec, "hard_obstacle_specs", [])
         if specs:
             self.set_obstacles(specs)
+        self.setup_hard_runtime_constraints_from_taskspec(taskspec)
+
+    # ------------------------------------------------------------------ #
+    def setup_hard_runtime_constraints_from_taskspec(self, taskspec):
+        """
+        Configure runtime CBF filters from safety predicates.
+
+        New semantics are HARD/SOFT.  Existing JSON files may still contain
+        modality="REQUIRE"; for VelocityLimit we treat legacy REQUIRE as hard
+        unless the clause is explicitly soft/prefer.  This gives the new hard
+        velocity behavior without requiring a large spec rewrite in one patch.
+
+        Time-windowed velocity limits are conservatively enforced over the
+        whole rollout for now.  That is stricter than requested but safe.
+        """
+        clauses = getattr(taskspec, "clauses", [])
+        velocity_windows = []
+        for clause in clauses:
+            if clause.predicate != "VelocityLimit":
+                continue
+            modality = str(clause.modality).upper()
+            if modality in ("PREFER", "SOFT"):
+                continue
+            if "vmax" not in clause.parameters:
+                raise ValueError("VelocityLimit clause must define parameter 'vmax'.")
+            vmax = float(clause.parameters["vmax"])
+            if clause.time_window is None:
+                velocity_windows.append((-np.inf, np.inf, vmax))
+            else:
+                t_start, t_end = clause.time_window
+                velocity_windows.append((float(t_start), float(t_end), vmax))
+
+        if not velocity_windows:
+            self.velocity_cbf_config = None
+        else:
+            # Multiple windows compose as the tightest bound per time.
+            vmax_global = min(v for _, _, v in velocity_windows)
+            self.velocity_cbf_config = VelocityCBFConfig(
+                vmax=vmax_global,
+                alpha=10.0,
+                windows=velocity_windows,
+            )
+
+        for dmp in self.dmps:
+            dmp.velocity_cbf_config = self.velocity_cbf_config
+
+        orientation_configs = []
+        for clause in clauses:
+            if clause.predicate != "OrientationLimit":
+                continue
+            modality = str(clause.modality).upper()
+            if modality in ("PREFER", "SOFT"):
+                continue
+            if "q_ref" not in clause.parameters:
+                raise ValueError("OrientationLimit clause must define parameter 'q_ref'.")
+            if "max_angle_rad" not in clause.parameters:
+                raise ValueError(
+                    "OrientationLimit clause must define parameter 'max_angle_rad'."
+                )
+            if clause.time_window is None:
+                t_start, t_end = -np.inf, np.inf
+            else:
+                t_start, t_end = clause.time_window
+            orientation_configs.append(OrientationHOCBFConfig(
+                q_ref=np.asarray(clause.parameters["q_ref"], dtype=float),
+                max_angle_rad=float(clause.parameters["max_angle_rad"]),
+                alpha1=8.0,
+                alpha2=8.0,
+                t_start=float(t_start),
+                t_end=float(t_end),
+            ))
+
+        self.orientation_hocbf_configs = orientation_configs
+        for ori_dmp in self.ori_dmps:
+            if ori_dmp is not None:
+                ori_dmp.orientation_hocbf_configs = self.orientation_hocbf_configs
+
+        angular_velocity_configs = []
+        for clause in clauses:
+            if clause.predicate != "AngularVelocityLimit":
+                continue
+            modality = str(clause.modality).upper()
+            if modality in ("PREFER", "SOFT"):
+                continue
+            if "omega_max" not in clause.parameters:
+                raise ValueError(
+                    "AngularVelocityLimit clause must define parameter 'omega_max'."
+                )
+            if clause.time_window is None:
+                t_start, t_end = -np.inf, np.inf
+            else:
+                t_start, t_end = clause.time_window
+            angular_velocity_configs.append(AngularVelocityCBFConfig(
+                omega_max=float(clause.parameters["omega_max"]),
+                alpha=10.0,
+                t_start=float(t_start),
+                t_end=float(t_end),
+            ))
+
+        self.angular_velocity_cbf_configs = angular_velocity_configs
+        for ori_dmp in self.ori_dmps:
+            if ori_dmp is not None:
+                ori_dmp.angular_velocity_cbf_configs = self.angular_velocity_cbf_configs
 
     # ------------------------------------------------------------------ #
     def set_obstacles(self, obstacles):
@@ -268,6 +384,9 @@ class MultiPhaseCertifiedPolicy:
         all_raw_sd = []
         all_quat  = []      # quaternion trajectories
         all_omega = []      # angular velocity trajectories
+        all_velocity_cbf = []
+        all_orientation_hocbf = []
+        all_angular_velocity_cbf = []
 
         t_offset = 0.0    # global time offset for concatenation
 
@@ -279,10 +398,21 @@ class MultiPhaseCertifiedPolicy:
 
             # Ensure DMP internal timing is correct
             dur = self.phases[idx]["duration"]
+            # Keep the stitched rollout dynamically continuous.  The first
+            # phase starts from the task spec; later phases start from the
+            # actual previous phase endpoint instead of teleporting to the
+            # nominal phase start.  This matters for hard velocity safety:
+            # a position jump at a phase boundary is an implicit velocity spike.
+            if idx == 0:
+                dmp.start = np.asarray(self.phases[idx]["start"], float)
+            else:
+                dmp.start = all_pos[-1][-1].copy()
+            dmp.end = np.asarray(self.phases[idx]["end"], float)
             dmp.tau = dur
             dmp.ts  = np.arange(0.0, dur + 1e-12, dmp.dt)
             dmp.T   = dmp.ts.size
             dmp.ds  = DynamicalSystems(dur)
+            dmp.time_offset = t_offset
 
             # --- Slice theta: [traj_xyz | ori_xyz | SD | SK] ---
             n_traj, n_sd, n_sk = sizes
@@ -311,6 +441,7 @@ class MultiPhaseCertifiedPolicy:
             yd    = plan["yd_des"]
             K     = plan["K"]
             D     = plan["D"]
+            velocity_cbf = plan.get("safety", {}).get("velocity_cbf", None)
 
             # Pass final Q of this phase as initial Q of next phase → no jerk at boundary
             if idx + 1 < len(self.dmps):
@@ -322,6 +453,18 @@ class MultiPhaseCertifiedPolicy:
             q_des = None
             omega = None
             if ori_dmp is not None and ori_dim > 0:
+                if idx == 0:
+                    ori_dmp.q_start = quat_normalize(np.asarray(
+                        self.phases[idx]["start_quat"], float
+                    ))
+                elif all_quat:
+                    ori_dmp.q_start = quat_normalize(all_quat[-1][-1])
+                ori_dmp.q_end = quat_normalize(np.asarray(
+                    self.phases[idx]["end_quat"], float
+                ))
+                ori_dmp.time_offset = t_offset
+                ori_dmp.orientation_hocbf_configs = self.orientation_hocbf_configs
+                ori_dmp.angular_velocity_cbf_configs = self.angular_velocity_cbf_configs
                 ori_dmp.tau = dur
                 ori_dmp.ts  = np.arange(0.0, dur + 1e-12, ori_dmp.dt)
                 ori_dmp.T   = ori_dmp.ts.size
@@ -330,6 +473,15 @@ class MultiPhaseCertifiedPolicy:
                 ori_plan = ori_dmp.rollout()
                 q_des = ori_plan["q_des"]
                 omega = ori_plan["omega"]
+                orientation_hocbf = ori_plan.get("safety", {}).get(
+                    "orientation_hocbf", None
+                )
+                angular_velocity_cbf = ori_plan.get("safety", {}).get(
+                    "angular_velocity_cbf", None
+                )
+            else:
+                orientation_hocbf = None
+                angular_velocity_cbf = None
 
             # For phases after the first, drop the first timestep to
             # avoid duplicate time=boundary points.
@@ -339,9 +491,24 @@ class MultiPhaseCertifiedPolicy:
                 yd = yd[1:]
                 K  = K[1:]
                 D  = D[1:]
+                if velocity_cbf is not None:
+                    velocity_cbf = {
+                        key: (val[1:] if isinstance(val, np.ndarray) else val)
+                        for key, val in velocity_cbf.items()
+                    }
                 if q_des is not None:
                     q_des = q_des[1:]
                     omega = omega[1:]
+                    if orientation_hocbf is not None:
+                        orientation_hocbf = {
+                            key: (val[1:] if isinstance(val, np.ndarray) else val)
+                            for key, val in orientation_hocbf.items()
+                        }
+                    if angular_velocity_cbf is not None:
+                        angular_velocity_cbf = {
+                            key: (val[1:] if isinstance(val, np.ndarray) else val)
+                            for key, val in angular_velocity_cbf.items()
+                        }
 
             all_time.append(ts)
             all_pos.append(y)
@@ -350,9 +517,15 @@ class MultiPhaseCertifiedPolicy:
             all_D.append(D)
             all_raw_sk.append(raw_sk)
             all_raw_sd.append(raw_sd)
+            if velocity_cbf is not None:
+                all_velocity_cbf.append(velocity_cbf)
             if q_des is not None:
                 all_quat.append(q_des)
                 all_omega.append(omega)
+                if orientation_hocbf is not None:
+                    all_orientation_hocbf.append(orientation_hocbf)
+                if angular_velocity_cbf is not None:
+                    all_angular_velocity_cbf.append(angular_velocity_cbf)
 
             t_offset = ts[-1]
 
@@ -372,6 +545,77 @@ class MultiPhaseCertifiedPolicy:
         vel_full = np.concatenate(all_vel)
         pos_full, vel_full = self._projector.project(pos_full, vel_full, self.DT)
 
+        safety = {}
+        if all_velocity_cbf:
+            keys = (
+                "h", "lhs", "rhs", "active", "correction_norm", "speed",
+                "vmax_active", "window_active",
+            )
+            vc = {}
+            for key in keys:
+                vc[key] = np.concatenate([part[key] for part in all_velocity_cbf])
+            vc["enabled"] = any(bool(part.get("enabled", False))
+                                for part in all_velocity_cbf)
+            vmax_values = [part.get("vmax") for part in all_velocity_cbf
+                           if part.get("vmax") is not None]
+            alpha_values = [part.get("alpha") for part in all_velocity_cbf
+                            if part.get("alpha") is not None]
+            vc["vmax"] = min(vmax_values) if vmax_values else None
+            vc["alpha"] = alpha_values[0] if alpha_values else None
+
+            speed_post = np.linalg.norm(vel_full, axis=1)
+            vc["post_projection_speed"] = speed_post
+            if "vmax_active" in vc:
+                vmax_active = vc["vmax_active"]
+                window_active = vc.get("window_active", np.ones_like(speed_post, dtype=bool))
+                mask = window_active & np.isfinite(vmax_active)
+                vc["post_projection_h"] = np.full_like(speed_post, np.nan, dtype=float)
+                vc["post_projection_violation"] = np.zeros_like(speed_post, dtype=bool)
+                if np.any(mask):
+                    vc["post_projection_h"][mask] = vmax_active[mask] ** 2 - speed_post[mask] ** 2
+                    vc["post_projection_violation"][mask] = (
+                        speed_post[mask] > vmax_active[mask] + 1e-8
+                    )
+            elif vc["vmax"] is not None:
+                vc["post_projection_h"] = vc["vmax"] ** 2 - speed_post ** 2
+                vc["post_projection_violation"] = speed_post > vc["vmax"] + 1e-8
+            safety["velocity_cbf"] = vc
+
+        if all_orientation_hocbf:
+            keys = (
+                "enabled", "h", "hdot", "psi1", "lhs", "rhs",
+                "active", "correction_norm", "angle_rad",
+            )
+            oh = {}
+            for key in keys:
+                oh[key] = np.concatenate([part[key] for part in all_orientation_hocbf])
+            safety["orientation_hocbf"] = oh
+
+        if all_angular_velocity_cbf:
+            keys = (
+                "enabled", "h", "lhs", "rhs",
+                "active", "correction_norm", "omega_norm",
+                "projection_active", "projection_correction_norm",
+            )
+            av = {}
+            for key in keys:
+                av[key] = np.concatenate([
+                    part[key] for part in all_angular_velocity_cbf
+                ])
+            omega_full = angular_velocity
+            if omega_full is not None:
+                omega_norm = np.linalg.norm(omega_full, axis=1)
+                av["post_integration_omega_norm"] = omega_norm
+                enabled = av["enabled"].astype(bool)
+                if np.any(enabled):
+                    omega_max = np.sqrt(np.maximum(0.0, av["h"] + av["omega_norm"]**2))
+                    av["omega_max"] = float(np.nanmin(omega_max[enabled]))
+                    av["post_integration_h"] = av["omega_max"]**2 - omega_norm**2
+                    av["post_integration_violation"] = (
+                        enabled & (omega_norm > av["omega_max"] + 1e-8)
+                    )
+            safety["angular_velocity_cbf"] = av
+
         trace = Trace(
             time=np.concatenate(all_time),
             position=pos_full,
@@ -384,5 +628,6 @@ class MultiPhaseCertifiedPolicy:
             raw_sd_weights=np.concatenate(all_raw_sd),
             orientation=orientation,
             angular_velocity=angular_velocity,
+            safety=safety,
         )
         return trace

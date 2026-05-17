@@ -22,7 +22,10 @@ Plots (PNG only, 300 dpi):
   2. scene4_topdown.png     — 2D X–Y top-down view
   3. scene4_stiffness.png   — Per-axis Kxx/Kyy/Kzz vs time
   4. scene4_orientation.png — Euler angles vs time (all near 0)
-  5. scene4_kinematics.png  — Position & velocity time-series
+    5. scene4_orientation_geodesic.png — angle to q_ref vs time
+    6. scene4_kinematics.png  — Position & velocity time-series
+    7. scene4_angular_velocity.png — omega norm vs time
+    8. scene4_velocity_cbf.png — speed vs time-windowed vmax
 """
 
 import numpy as np
@@ -58,8 +61,11 @@ OBSTACLE = None
 OBS_RAD      = 0.12
 OBS_SAFE_RAD = 0.12
 OBSTACLE_GEOMETRY = "sphere"
+VELOCITY_LIMIT = 0.8
 
 Q_UPRIGHT = np.array([1.0, 0.0, 0.0, 0.0])
+ORI_REF = np.array([1.0, 0.0, 0.0, 0.0])
+ORI_MAX_ANGLE = 0.15
 
 # Phase timing (loaded from JSON in main())
 T_CARRY_END = 5.0
@@ -114,6 +120,14 @@ def quat_to_euler(q):
     return roll, pitch, yaw
 
 
+def quat_geodesic_angle(q, q_ref):
+    """Return the geodesic angle between two quaternions (radians)."""
+    q = quat_normalize(np.asarray(q, float))
+    q_ref = quat_normalize(np.asarray(q_ref, float))
+    dot = float(np.clip(abs(np.dot(q, q_ref)), -1.0, 1.0))
+    return 2.0 * np.arccos(dot)
+
+
 # ── diagnostics ───────────────────────────────────────────────────────
 def print_diagnostics(trace, best_cost):
     pos   = trace.position
@@ -151,6 +165,54 @@ def print_diagnostics(trace, best_cost):
 
     # hold position drift at waypoint during hold phase
     hold_drift = float(d_wp[hold_mask].max()) if np.any(hold_mask) else float("nan")
+    velocity_cbf = trace.safety.get("velocity_cbf", {}) if hasattr(trace, "safety") else {}
+    cbf_active = int(np.sum(velocity_cbf.get("active", []))) if velocity_cbf else 0
+    cbf_viol = int(np.sum(velocity_cbf.get("post_projection_violation", []))) if velocity_cbf else 0
+    cbf_min_h = None
+    if velocity_cbf and "post_projection_h" in velocity_cbf:
+        cbf_min_h = float(np.nanmin(velocity_cbf["post_projection_h"]))
+    window_active = int(np.sum(velocity_cbf.get("window_active", []))) if velocity_cbf else 0
+
+    def _mask_intervals(times, mask, max_show=6):
+        if mask is None or len(mask) == 0:
+            return "none"
+        mask = np.asarray(mask, dtype=bool)
+        if not np.any(mask):
+            return "none"
+        idx = np.where(mask)[0]
+        runs = []
+        start = idx[0]
+        prev = idx[0]
+        for i in idx[1:]:
+            if i == prev + 1:
+                prev = i
+                continue
+            runs.append((times[start], times[prev]))
+            start = i
+            prev = i
+        runs.append((times[start], times[prev]))
+        parts = [f"[{s:.2f},{e:.2f}]" for s, e in runs[:max_show]]
+        if len(runs) > max_show:
+            parts.append("...")
+        return ", ".join(parts)
+
+    # orientation geodesic angle diagnostics
+    ori_angle_max = float("nan")
+    ori_viol = 0
+    if trace.orientation is not None:
+        angles = np.array([quat_geodesic_angle(q, ORI_REF) for q in trace.orientation])
+        ori_angle_max = float(np.max(angles))
+        ori_viol = int(np.sum(angles > ORI_MAX_ANGLE + 1e-9))
+
+    # angular velocity diagnostics
+    omega_max = float("nan")
+    omega_viol = 0
+    if trace.angular_velocity is not None:
+        omega_norm = np.linalg.norm(trace.angular_velocity, axis=1)
+        omega_max = float(np.max(omega_norm))
+        av = trace.safety.get("angular_velocity_cbf", {}) if hasattr(trace, "safety") else {}
+        if av and "post_integration_violation" in av:
+            omega_viol = int(np.sum(av["post_integration_violation"]))
 
     sep = "=" * 48
     print(f"\n{sep} EXP 2 DIAGNOSTICS {sep}")
@@ -160,7 +222,19 @@ def print_diagnostics(trace, best_cost):
     print(f"  Hold speed (max)  : {hold_speed_max:.4f} m/s  (target ≈ 0)")
     print(f"  Hold drift (max)  : {hold_drift*100:.1f} cm from waypoint during hold")
     print(f"  Goal reached      : {'YES' if reached else 'NO'}  t={t_reach:.2f} s")
-    print(f"  Max speed         : {speed.max():.4f} m/s  (limit 0.8)")
+    print(f"  Max speed         : {speed.max():.4f} m/s  (limit {VELOCITY_LIMIT:.3f})")
+    print(f"  Velocity CBF      : active_steps={cbf_active}, window_on={window_active}, violations={cbf_viol}, min_h={cbf_min_h}")
+    if velocity_cbf:
+        print(f"  CBF active windows: {_mask_intervals(t, velocity_cbf.get('active', []))}")
+        print(f"  Limit windows     : {_mask_intervals(t, velocity_cbf.get('window_active', []))}")
+    print(f"  Orientation angle : max={ori_angle_max:.4f} rad  (limit {ORI_MAX_ANGLE:.3f}), violations={ori_viol}")
+    print(f"  Angular velocity  : max={omega_max:.4f} rad/s, violations={omega_viol}")
+    oh = trace.safety.get("orientation_hocbf", {}) if hasattr(trace, "safety") else {}
+    if oh:
+        print(f"  Ori HOCBF active  : {_mask_intervals(t, oh.get('active', []))}")
+    av = trace.safety.get("angular_velocity_cbf", {}) if hasattr(trace, "safety") else {}
+    if av:
+        print(f"  AngVel CBF active : {_mask_intervals(t, av.get('active', []))}")
     print(f"  Obstacle clearance: {obs_cm:.1f} cm  (HARD {OBSTACLE_GEOMETRY}, r={OBS_RAD:.2f} m)")
     print(f"  Pts inside obs    : {n_inside}  (HARD: must be 0)")
     print(f"  tr(K) range       : [{trK.min():.0f}, {trK.max():.0f}] N/m")
@@ -449,13 +523,10 @@ def plot_orientation_euler(trace, best_cost, base="exp2_orientation"):
     ax.plot(t, pitch, color=C_KY, lw=2.2, label=r"Pitch $\theta_y$")
     ax.axhline(0.0, color="#999999", ls="-", lw=0.5, alpha=0.30)
 
-    # ±limit band
-    lim_deg = np.degrees(0.15)
-    ax.axhline( lim_deg, color="#CC4444", ls=":", lw=1.0, alpha=0.65,
-               label=f"±{lim_deg:.1f}° limit")
-    ax.axhline(-lim_deg, color="#CC4444", ls=":", lw=1.0, alpha=0.65)
+    # Note: Euler angles are absolute and can wrap by ±180°.
+    # The true constraint is enforced on the geodesic angle to q_ref.
 
-    all_max = max(abs(roll).max(), abs(pitch).max(), abs(yaw).max(), lim_deg * 1.5)
+    all_max = max(abs(roll).max(), abs(pitch).max(), abs(yaw).max(), 10.0)
     ax.set_ylim(-all_max * 1.2, all_max * 1.2)
     yhi = ax.get_ylim()[1]
 
@@ -469,8 +540,48 @@ def plot_orientation_euler(trace, best_cost, base="exp2_orientation"):
 
     ax.set_xlabel("Time (s)", fontsize=11)
     ax.set_ylabel("Angle (deg)", fontsize=11)
-    ax.set_title(f"{SCENE_LABEL}\nOrientation constant [1,0,0,0] throughout", fontsize=9)
+    qtxt = f"[{ORI_REF[0]:.3f},{ORI_REF[1]:.3f},{ORI_REF[2]:.3f},{ORI_REF[3]:.3f}]"
+    ax.set_title(f"{SCENE_LABEL}\nEuler angles (absolute); reference q_ref={qtxt}", fontsize=9)
     ax.set_xlim(0, T_CONT_END)
+    ax.grid(True, alpha=0.25)
+    ax.legend(fontsize=9, loc="upper right", framealpha=0.9,
+              edgecolor="lightgrey", fancybox=False)
+    plt.tight_layout()
+    plt.savefig(f"{base}.png", dpi=300, bbox_inches="tight", facecolor="white")
+    print(f"Saved: {base}.png")
+    plt.close()
+
+
+# =====================================================================
+#  PLOT 4b — Geodesic angle to q_ref vs time (true constraint)
+# =====================================================================
+def plot_orientation_geodesic(trace, best_cost, base="exp2_orientation_geodesic"):
+    if trace.orientation is None:
+        print("No orientation — skipping geodesic plot.")
+        return
+    t = trace.time
+    angles = np.array([quat_geodesic_angle(q, ORI_REF) for q in trace.orientation])
+    angles_deg = np.degrees(angles)
+
+    fig, ax = plt.subplots(figsize=(10, 4.2))
+    ax.axvspan(0,            T_CARRY_END, alpha=0.025, color=C_CARRY, zorder=0)
+    ax.axvspan(T_CARRY_END,  T_HOLD_END,  alpha=0.040, color=C_HOLD,  zorder=0)
+    ax.axvspan(T_HOLD_END,   T_CONT_END,  alpha=0.025, color=C_CONT,  zorder=0)
+
+    ax.plot(t, angles_deg, color=C_KY, lw=2.2, label="Geodesic angle to q_ref")
+
+    lim_deg = np.degrees(ORI_MAX_ANGLE)
+    ax.axhline(lim_deg, color="#CC4444", ls=":", lw=1.0, alpha=0.70,
+               label=f"limit = {lim_deg:.1f}°")
+
+    for tv in [T_CARRY_END, T_HOLD_END]:
+        ax.axvline(tv, color="#888888", lw=0.8, ls="--", alpha=0.50)
+
+    ax.set_xlabel("Time (s)", fontsize=11)
+    ax.set_ylabel("Angle to q_ref (deg)", fontsize=11)
+    ax.set_title(f"{SCENE_LABEL}\nGeodesic angle to q_ref", fontsize=9)
+    ax.set_xlim(0, T_CONT_END)
+    ax.set_ylim(0.0, max(angles_deg.max() * 1.15, lim_deg * 1.3, 5.0))
     ax.grid(True, alpha=0.25)
     ax.legend(fontsize=9, loc="upper right", framealpha=0.9,
               edgecolor="lightgrey", fancybox=False)
@@ -556,15 +667,24 @@ def plot_kinematics(trace, best_cost, base="exp2_kinematics"):
     ax1.plot(t, vel[:,1], color=c_y, lw=1.5, alpha=0.75, label=r"$\dot y$")
     ax1.plot(t, vel[:,2], color=c_z, lw=1.5, alpha=0.75, label=r"$\dot z$")
     ax1.plot(t, speed,    color=c_spd, lw=2.2, label=r"$\|\dot p\|$")
-    ax1.axhline( 0.8, color="#333333", ls=":", lw=1.2, alpha=0.65, label="$v_{max}$=0.8")
-    ax1.axhline(-0.8, color="#333333", ls=":", lw=1.2, alpha=0.65)
+    vc = trace.safety.get("velocity_cbf", {}) if hasattr(trace, "safety") else {}
+    vmax_active = vc.get("vmax_active", None)
+    window_active = vc.get("window_active", None)
+    if vmax_active is not None and len(vmax_active) == len(t):
+        ax1.plot(t, vmax_active, color="#333333", ls=":", lw=1.2, alpha=0.75,
+                 label=r"$v_{max}(t)$")
+        ax1.plot(t, -vmax_active, color="#333333", ls=":", lw=1.2, alpha=0.75)
+    else:
+        ax1.axhline( VELOCITY_LIMIT, color="#333333", ls=":", lw=1.2, alpha=0.65,
+                    label=fr"$v_{{max}}$={VELOCITY_LIMIT:.2f}")
+        ax1.axhline(-VELOCITY_LIMIT, color="#333333", ls=":", lw=1.2, alpha=0.65)
     ax1.axhline( 0.0, color="#999999", ls="-", lw=0.5, alpha=0.30)
 
     # hold phase: velocity should be ~0
     ax1.axhspan(-0.06, 0.06, alpha=0.08, color=C_HOLD,
                 label="Target: v≈0 in hold")
 
-    vhi = max(speed.max(), 0.85) * 1.20
+    vhi = max(speed.max(), VELOCITY_LIMIT, 0.05) * 1.20
     ax1.set_ylim(-vhi, vhi)
     ax1.set_xlabel("Time (s)", fontsize=11)
     ax1.set_ylabel("Velocity (m/s)", fontsize=11)
@@ -574,6 +694,98 @@ def plot_kinematics(trace, best_cost, base="exp2_kinematics"):
                edgecolor="lightgrey", fancybox=False, ncol=3)
 
     fig.suptitle("Exp 2 — Per-axis Position & Velocity", fontsize=12, y=1.01)
+    plt.tight_layout()
+    plt.savefig(f"{base}.png", dpi=300, bbox_inches="tight", facecolor="white")
+    print(f"Saved: {base}.png")
+    plt.close()
+
+
+# =====================================================================
+#  PLOT 6 — angular velocity vs time
+# =====================================================================
+def plot_angular_velocity(trace, best_cost, base="exp2_angular_velocity"):
+    if trace.angular_velocity is None:
+        print("No angular velocity — skipping.")
+        return
+    t = trace.time
+    omega = trace.angular_velocity
+    omega_norm = np.linalg.norm(omega, axis=1)
+
+    av = trace.safety.get("angular_velocity_cbf", {}) if hasattr(trace, "safety") else {}
+    omega_max = av.get("omega_max", None)
+
+    fig, ax = plt.subplots(figsize=(10, 4.2))
+    ax.axvspan(0,            T_CARRY_END, alpha=0.025, color=C_CARRY, zorder=0)
+    ax.axvspan(T_CARRY_END,  T_HOLD_END,  alpha=0.040, color=C_HOLD,  zorder=0)
+    ax.axvspan(T_HOLD_END,   T_CONT_END,  alpha=0.025, color=C_CONT,  zorder=0)
+
+    ax.plot(t, omega[:,0], color=C_KX, lw=1.4, alpha=0.70, label=r"$\omega_x$")
+    ax.plot(t, omega[:,1], color=C_KY, lw=1.4, alpha=0.70, label=r"$\omega_y$")
+    ax.plot(t, omega[:,2], color=C_KZ, lw=1.4, alpha=0.70, label=r"$\omega_z$")
+    ax.plot(t, omega_norm, color="#8172B2", lw=2.2, label=r"$\|\omega\|$")
+
+    if omega_max is not None and np.isfinite(omega_max):
+        ax.axhline(omega_max, color="#333333", ls=":", lw=1.2, alpha=0.75,
+                   label=fr"$\omega_{{max}}$={omega_max:.2f}")
+
+    for tv in [T_CARRY_END, T_HOLD_END]:
+        ax.axvline(tv, color="#888888", lw=0.8, ls="--", alpha=0.50)
+
+    ax.set_xlabel("Time (s)", fontsize=11)
+    ax.set_ylabel("Angular velocity (rad/s)", fontsize=11)
+    ax.set_title(f"{SCENE_LABEL}\nAngular velocity", fontsize=9)
+    ax.set_xlim(0, T_CONT_END)
+    ax.grid(True, alpha=0.25)
+    ax.legend(fontsize=9, loc="upper right", framealpha=0.9,
+              edgecolor="lightgrey", fancybox=False, ncol=2)
+    plt.tight_layout()
+    plt.savefig(f"{base}.png", dpi=300, bbox_inches="tight", facecolor="white")
+    print(f"Saved: {base}.png")
+    plt.close()
+
+
+# =====================================================================
+#  PLOT 7 — velocity CBF windows (speed vs vmax(t))
+# =====================================================================
+def plot_velocity_cbf(trace, best_cost, base="exp2_velocity_cbf"):
+    vc = trace.safety.get("velocity_cbf", {}) if hasattr(trace, "safety") else {}
+    if not vc:
+        print("No velocity CBF data — skipping.")
+        return
+    t = trace.time
+    speed = np.linalg.norm(trace.velocity, axis=1)
+    vmax_active = vc.get("vmax_active", None)
+    window_active = vc.get("window_active", None)
+
+    fig, ax = plt.subplots(figsize=(10, 4.2))
+    ax.axvspan(0,            T_CARRY_END, alpha=0.025, color=C_CARRY, zorder=0)
+    ax.axvspan(T_CARRY_END,  T_HOLD_END,  alpha=0.040, color=C_HOLD,  zorder=0)
+    ax.axvspan(T_HOLD_END,   T_CONT_END,  alpha=0.025, color=C_CONT,  zorder=0)
+
+    ax.plot(t, speed, color="#8172B2", lw=2.2, label=r"$\|\dot p\|$")
+    if vmax_active is not None and len(vmax_active) == len(t):
+        ax.plot(t, vmax_active, color="#333333", ls=":", lw=1.2, alpha=0.80,
+                label=r"$v_{max}(t)$")
+    else:
+        ax.axhline(VELOCITY_LIMIT, color="#333333", ls=":", lw=1.2, alpha=0.65,
+                   label=fr"$v_{{max}}$={VELOCITY_LIMIT:.2f}")
+
+    if window_active is not None and len(window_active) == len(t):
+        on = window_active.astype(bool)
+        if np.any(on):
+            ax.fill_between(t, 0.0, speed.max() * 1.05, where=on,
+                            color="#CCCCCC", alpha=0.18, label="CBF window on")
+
+    for tv in [T_CARRY_END, T_HOLD_END]:
+        ax.axvline(tv, color="#888888", lw=0.8, ls="--", alpha=0.50)
+
+    ax.set_xlabel("Time (s)", fontsize=11)
+    ax.set_ylabel("Speed (m/s)", fontsize=11)
+    ax.set_title(f"{SCENE_LABEL}\nVelocity CBF windows", fontsize=9)
+    ax.set_xlim(0, T_CONT_END)
+    ax.grid(True, alpha=0.25)
+    ax.legend(fontsize=9, loc="upper right", framealpha=0.9,
+              edgecolor="lightgrey", fancybox=False, ncol=2)
     plt.tight_layout()
     plt.savefig(f"{base}.png", dpi=300, bbox_inches="tight", facecolor="white")
     print(f"Saved: {base}.png")
@@ -625,8 +837,8 @@ def main():
     assert taskspec.phases is not None
 
     global START, WAYPOINT, GOAL, OBSTACLE, OBS_RAD, OBS_SAFE_RAD
-    global Q_UPRIGHT, T_CARRY_END, T_HOLD_END, T_CONT_END
-    global HUMAN_POS, OBSTACLE_GEOMETRY
+    global Q_UPRIGHT, ORI_REF, ORI_MAX_ANGLE, T_CARRY_END, T_HOLD_END, T_CONT_END
+    global HUMAN_POS, OBSTACLE_GEOMETRY, VELOCITY_LIMIT
 
     START = np.asarray(taskspec.phases[0]["start"], dtype=float)
     GOAL = np.asarray(taskspec.phases[-1]["end"], dtype=float)
@@ -642,7 +854,16 @@ def main():
     T_HOLD_END = phase_durations[0] + phase_durations[1] if len(phase_durations) > 1 else phase_durations[0]
     T_CONT_END = float(np.sum(phase_durations))
 
-    Q_UPRIGHT = quat_normalize(np.asarray(taskspec.phases[0].get("start_quat", [1.0, 0.0, 0.0, 0.0]), dtype=float))
+    Q_UPRIGHT = quat_normalize(np.asarray(
+        taskspec.phases[0].get("start_quat", [1.0, 0.0, 0.0, 0.0]), dtype=float
+    ))
+
+    ori_clause = next((cl for cl in taskspec.clauses if cl.predicate == "OrientationLimit"), None)
+    if ori_clause is not None and "q_ref" in ori_clause.parameters:
+        ORI_REF = quat_normalize(np.asarray(ori_clause.parameters["q_ref"], dtype=float))
+        ORI_MAX_ANGLE = float(ori_clause.parameters.get("max_angle_rad", ORI_MAX_ANGLE))
+    else:
+        ORI_REF = Q_UPRIGHT.copy()
 
     obs_clause = next((cl for cl in taskspec.clauses if cl.predicate == "ObstacleAvoidance"), None)
     if obs_clause is None:
@@ -651,6 +872,10 @@ def main():
     OBS_RAD = float(obs_clause.parameters["safe_radius"])
     OBS_SAFE_RAD = OBS_RAD
     OBSTACLE_GEOMETRY = str(obs_clause.parameters.get("geometry", "sphere"))
+
+    vel_clause = next((cl for cl in taskspec.clauses if cl.predicate == "VelocityLimit"), None)
+    if vel_clause is not None and "vmax" in vel_clause.parameters:
+        VELOCITY_LIMIT = float(vel_clause.parameters["vmax"])
 
     HUMAN_POS = GOAL.copy()
 
@@ -664,7 +889,9 @@ def main():
     print(f"Exp 2: Carry → Hold-2s → Continue (HARD obstacle avoidance, from JSON)")
     print(f"Multi-phase policy: {len(taskspec.phases)} phases, theta_dim={theta_dim}")
     print(f"  obstacle geometry: {OBSTACLE_GEOMETRY}, radius={OBS_RAD:.3f} m")
+    print(f"  velocity limit: HARD CBF vmax={VELOCITY_LIMIT:.3f} m/s")
     print(f"  has_orientation: {policy.has_orientation}")
+    print(f"  orientation ref: {ORI_REF}  max_angle={ORI_MAX_ANGLE:.3f} rad")
     for i, p in enumerate(taskspec.phases):
         od = policy.ori_dims[i]
         print(f"  Phase {i+1} ({p['label']}): pos_dim={policy.theta_dims[i]-od}, ori_dim={od}")
@@ -737,9 +964,12 @@ def main():
     plot_2d_topdown(trace_final, best_cost)
     plot_stiffness(trace_final, best_cost)
     plot_orientation_euler(trace_final, best_cost)
+    plot_orientation_geodesic(trace_final, best_cost)
     plot_kinematics(trace_final, best_cost)
+    plot_angular_velocity(trace_final, best_cost)
+    plot_velocity_cbf(trace_final, best_cost)
 
-    print("Exp 2 done — 5 plots saved as PNG.")
+    print("Exp 2 done — 8 plots saved as PNG.")
 
 
 if __name__ == "__main__":

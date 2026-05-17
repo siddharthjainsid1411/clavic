@@ -1,4 +1,5 @@
 import numpy as np
+from core.cbf_filter import filter_velocity_acceleration
 from .utils import lt_pack, lt_unpack, sym
 from .minimum_jerk import MinimumJerk
 from .dynamical_systems import DynamicalSystems
@@ -55,6 +56,7 @@ class DMPWithGainScheduling:
         self.slack_mag  = float(slack_mag)
         self.slack_rate = float(slack_rate_limit)
         self.Q_init     = None   # set by multi_phase_policy for phase continuity
+        self.time_offset = 0.0   # global time offset set by multi_phase_policy
         # Repulsive obstacles: list of {"center": np.array(3), "radius": float,
         #                                "strength": float}
         # Injected by MultiPhaseCertifiedPolicy.set_obstacles() before rollout.
@@ -63,6 +65,9 @@ class DMPWithGainScheduling:
         # The radial projector in obstacle_projection.py remains as the hard
         # backstop guarantee; this repulsion only shapes the DMP trajectory.
         self.repulsive_obstacles = []
+        # Optional runtime CBF filter for Cartesian velocity limits.
+        # Configured by MultiPhaseCertifiedPolicy from HARD VelocityLimit clauses.
+        self.velocity_cbf_config = None
         self.ds         = DynamicalSystems(self.tau)
         
         y, yd, ydd, ts  = MinimumJerk(self.start, self.end, self.tau, self.dt).generate()
@@ -151,6 +156,15 @@ class DMPWithGainScheduling:
         yd   = np.zeros((T,3))
         ydd  = np.zeros((T,3))
         y[0] = self.start
+        velocity_cbf = None if sample_unsafe else self.velocity_cbf_config
+        cbf_h = np.full(T, np.nan)
+        cbf_lhs = np.full(T, np.nan)
+        cbf_rhs = np.full(T, np.nan)
+        cbf_active = np.zeros(T, dtype=bool)
+        cbf_correction = np.zeros(T)
+        cbf_speed = np.zeros(T)
+        cbf_vmax_active = np.full(T, np.nan)
+        cbf_window_active = np.zeros(T, dtype=bool)
 
         def dmp(t, y, yd):
             phase = self.ds.time_system(np.array([t]))[0]
@@ -204,18 +218,44 @@ class DMPWithGainScheduling:
                 else:
                     raise ValueError(f"Unsupported obstacle geometry: {geometry}")
 
-            return net_accel
+            global_t = self.time_offset + t
+            net_accel, diag = filter_velocity_acceleration(
+                net_accel, yd, velocity_cbf, t=global_t
+            )
+            return net_accel, diag
 
         for k in range(T-1):
             t0 = ts[k]; h = ts[k+1] - ts[k]
-            k1y = yd[k];               k1v = dmp(t0,            y[k],                    yd[k])
-            k2y = yd[k] + 0.5*h*k1v;   k2v = dmp(t0 + 0.5*h,    y[k] + 0.5*h*k1y,        yd[k] + 0.5*h*k1v)
-            k3y = yd[k] + 0.5*h*k2v;   k3v = dmp(t0 + 0.5*h,    y[k] + 0.5*h*k2y,        yd[k] + 0.5*h*k2v)
-            k4y = yd[k] + 1.0*h*k3v;   k4v = dmp(t0 + 1.0*h,    y[k] + 1.0*h*k3y,        yd[k] + 1.0*h*k3v)
+            k1y = yd[k];               k1v, diag = dmp(t0,            y[k],                    yd[k])
+            k2y = yd[k] + 0.5*h*k1v;   k2v, _    = dmp(t0 + 0.5*h,    y[k] + 0.5*h*k1y,        yd[k] + 0.5*h*k1v)
+            k3y = yd[k] + 0.5*h*k2v;   k3v, _    = dmp(t0 + 0.5*h,    y[k] + 0.5*h*k2y,        yd[k] + 0.5*h*k2v)
+            k4y = yd[k] + 1.0*h*k3v;   k4v, _    = dmp(t0 + 1.0*h,    y[k] + 1.0*h*k3y,        yd[k] + h*k3v)
             y[k+1]  = y[k]  + (h/6.0)*(k1y + 2*k2y + 2*k3y + k4y)
             yd[k+1] = yd[k] + (h/6.0)*(k1v + 2*k2v + 2*k3v + k4v)
             ydd[k]  = k1v
-        ydd[-1] = dmp(ts[-1], y[-1], yd[-1])
+            cbf_h[k] = diag["h"]
+            cbf_lhs[k] = diag["cbf_lhs"]
+            cbf_rhs[k] = diag["cbf_rhs"]
+            cbf_active[k] = diag["active"]
+            cbf_correction[k] = diag["correction_norm"]
+            cbf_speed[k] = diag["speed"]
+            cbf_vmax_active[k] = (
+                np.nan if diag.get("vmax_active") is None
+                else float(diag.get("vmax_active"))
+            )
+            cbf_window_active[k] = bool(diag.get("window_active", False))
+        ydd[-1], diag = dmp(ts[-1], y[-1], yd[-1])
+        cbf_h[-1] = diag["h"]
+        cbf_lhs[-1] = diag["cbf_lhs"]
+        cbf_rhs[-1] = diag["cbf_rhs"]
+        cbf_active[-1] = diag["active"]
+        cbf_correction[-1] = diag["correction_norm"]
+        cbf_speed[-1] = diag["speed"]
+        cbf_vmax_active[-1] = (
+            np.nan if diag.get("vmax_active") is None
+            else float(diag.get("vmax_active"))
+        )
+        cbf_window_active[-1] = bool(diag.get("window_active", False))
 
         x    = self.ds.time_system(ts)
         xdot = -np.ones_like(x) / self.tau
@@ -264,5 +304,20 @@ class DMPWithGainScheduling:
             "ts": ts, "y_des": y, "yd_des": yd, "ydd_des": ydd,
             "SD": SD, "SK": SK,
             "D": D, "Ddot": Ddot, "K": K,
-            "Q_final": Q[-1].copy()   # pass to next phase for K continuity
+            "Q_final": Q[-1].copy(),   # pass to next phase for K continuity
+            "safety": {
+                "velocity_cbf": {
+                    "enabled": velocity_cbf is not None,
+                    "vmax": None if velocity_cbf is None else velocity_cbf.vmax,
+                    "alpha": None if velocity_cbf is None else velocity_cbf.alpha,
+                    "h": cbf_h,
+                    "lhs": cbf_lhs,
+                    "rhs": cbf_rhs,
+                    "active": cbf_active,
+                    "correction_norm": cbf_correction,
+                    "speed": cbf_speed,
+                    "vmax_active": cbf_vmax_active,
+                    "window_active": cbf_window_active,
+                }
+            },
         }

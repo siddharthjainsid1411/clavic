@@ -50,7 +50,7 @@
       "type": "eventually_during",
       "predicate": "AtWaypoint",
       "weight": 8.0,
-      "modality": "REQUIRE",
+      "modality": "SOFT",
       "time_window": [0.0, 7.0],
       "_comment": "Reach goal position within carry phase"
     },
@@ -58,7 +58,7 @@
       "type": "always_during",
       "predicate": "HoldAtWaypoint",
       "weight": 10.0,
-      "modality": "REQUIRE",
+      "modality": "SOFT",
       "time_window": [7.05, 10.0],
       "_comment": "Hold position at human during hold phase"
     },
@@ -66,20 +66,20 @@
       "type": "always",
       "predicate": "ObstacleAvoidance",
       "weight": 9.0,
-      "modality": "PREFER",
+      "modality": "SOFT",
       "_comment": "SOFT: nudge path away from obstacle but penetration is acceptable (harmless ball)"
     },
     {
       "type": "always",
       "predicate": "VelocityLimit",
       "weight": 8.0,
-      "modality": "REQUIRE"
+      "modality": "HARD"
     },
     {
       "type": "always_during",
       "predicate": "OrientationLimit",
       "weight": 6.0,
-      "modality": "PREFER",
+      "modality": "HARD",
       "time_window": [0.0, 7.0],
       "_comment": "Prefer ball stays upright during carry but not hard-required"
     },
@@ -87,7 +87,7 @@
       "type": "always",
       "predicate": "AngularVelocityLimit",
       "weight": 5.0,
-      "modality": "REQUIRE"
+      "modality": "HARD"
     }
   ],
   "bindings": {

@@ -47,7 +47,7 @@
       "type": "eventually",
       "predicate": "AtGoal",
       "weight": 10.0,
-      "modality": "REQUIRE"
+      "modality": "SOFT"
     },
     {
       "type": "always",
@@ -62,26 +62,26 @@
       "type": "always",
       "predicate": "HumanComfortDistance",
       "weight": 15.0,
-      "modality": "PREFER",
+      "modality": "SOFT",
       "_comment": "Soft comfort zone \u2014 strong optimizer cost, no geometric enforcement"
     },
     {
       "type": "always",
       "predicate": "VelocityLimit",
       "weight": 8.0,
-      "modality": "REQUIRE"
+      "modality": "HARD"
     },
     {
       "type": "always",
       "predicate": "OrientationLimit",
       "weight": 8.0,
-      "modality": "REQUIRE"
+      "modality": "HARD"
     },
     {
       "type": "always",
       "predicate": "AngularVelocityLimit",
       "weight": 4.0,
-      "modality": "REQUIRE"
+      "modality": "HARD"
     }
   ],
   "bindings": {

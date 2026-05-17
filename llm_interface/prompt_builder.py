@@ -36,7 +36,11 @@ def _build_catalogue_section() -> str:
     )
     for name, cat in CATALOGUE.items():
         lines.append(f"  {name}")
-        lines.append(f"    allowed_modalities : {cat['allowed_modalities']}")
+        display_modalities = sorted({
+            "SOFT" if m in ("REQUIRE", "PREFER") else m
+            for m in cat["allowed_modalities"]
+        })
+        lines.append(f"    allowed_modalities : {display_modalities}")
         lines.append(f"    allowed_operators  : {cat['allowed_operators']}")
         lines.append("    parameters:")
         for pname, pdef in cat["params"].items():
@@ -63,14 +67,11 @@ def _build_weight_section() -> str:
     return """\
 === WEIGHT RULES ===
 
-PREFER  clauses: weight IS the optimizer cost multiplier.
+SOFT    clauses: weight IS the optimizer cost multiplier.
   - Range: [1.0, 20.0].  DO NOT exceed 20.
   - Critical preference (must reach goal): 8–15
   - Strong preference (avoid human comfort): 10–15
   - Soft style (minor preference): 1–5
-
-REQUIRE clauses: weight field is documentation only (ignored by optimizer).
-  - Set weight = 10.0 as a convention.
 
 HARD    clauses: weight field is documentation only (ignored by optimizer).
   - Set weight = 10.0 as a convention.
@@ -99,23 +100,21 @@ def _build_modality_rules_section() -> str:
 === MODALITY RULES (STRICT) ===
 
 HARD    — use for physical safety constraints that must NEVER be violated.
-          Triggers DMP repulsion + geometric projection (guaranteed safe).
-          Examples: collision avoidance, human body exclusion.
+          Triggers the available certified runtime/structural layer.
+          Examples: collision avoidance, human body exclusion, velocity limit.
 
-REQUIRE — use for task-completion constraints (optimizer penalises violation).
-          Examples: reach goal, stay below velocity limit, orientation limit.
-
-PREFER  — use for soft preferences (optimizer trades off against other costs).
-          Examples: comfort distance from human, smooth path style.
+SOFT    — use for task-completion objectives and preferences.
+          Optimizer trades these against other soft costs.
+          Examples: reach goal, hold waypoint, comfort distance, pour target.
 
 MODALITY IS NOT YOUR CHOICE FOR THESE — fixed rules:
   HumanBodyExclusion    → MUST be HARD
-  HumanComfortDistance  → MUST be PREFER
-  VelocityLimit         → MUST be REQUIRE
-  AngularVelocityLimit  → MUST be REQUIRE
-  ZeroVelocity          → MUST be REQUIRE
-  OrientationLimit      → MUST be REQUIRE
-  HoldAtWaypoint        → MUST be REQUIRE
+  HumanComfortDistance  → MUST be SOFT
+  VelocityLimit         → MUST be HARD
+  AngularVelocityLimit  → MUST be HARD
+  ZeroVelocity          → MUST be SOFT
+  OrientationLimit      → MUST be HARD
+  HoldAtWaypoint        → MUST be SOFT
 """
 
 
@@ -135,7 +134,7 @@ Each clause dict must have:
   "type"     : operator string
   "predicate": predicate name from catalogue
   "weight"   : float in [1.0, 20.0]
-  "modality" : "HARD", "REQUIRE", or "PREFER"
+  "modality" : "HARD" or "SOFT"
 
 For HARD obstacle/human clauses, also include:
   "hard_strength"    : float

@@ -111,7 +111,7 @@
       "type": "eventually_during",
       "predicate": "AtWaypoint",
       "weight": 10.0,
-      "modality": "REQUIRE",
+      "modality": "SOFT",
       "time_window": [
         0.0,
         5.0
@@ -122,7 +122,7 @@
       "type": "always_during",
       "predicate": "HoldAtWaypoint",
       "weight": 12.0,
-      "modality": "REQUIRE",
+      "modality": "SOFT",
       "time_window": [
         5.1,
         7.0
@@ -133,7 +133,7 @@
       "type": "eventually_during",
       "predicate": "AtGoal",
       "weight": 10.0,
-      "modality": "REQUIRE",
+      "modality": "SOFT",
       "time_window": [
         7.0,
         11.0
@@ -144,7 +144,7 @@
       "type": "always_during",
       "predicate": "HoldAtGoal",
       "weight": 8.0,
-      "modality": "REQUIRE",
+      "modality": "SOFT",
       "time_window": [
         9.5,
         11.0
@@ -164,20 +164,20 @@
       "type": "always",
       "predicate": "VelocityLimit",
       "weight": 8.0,
-      "modality": "REQUIRE"
+      "modality": "HARD"
     },
     {
       "type": "always",
       "predicate": "OrientationLimit",
       "weight": 10.0,
-      "modality": "REQUIRE",
+      "modality": "HARD",
       "_comment": "Keep orientation constant [1,0,0,0] throughout all phases"
     },
     {
       "type": "always",
       "predicate": "AngularVelocityLimit",
       "weight": 5.0,
-      "modality": "REQUIRE"
+      "modality": "SOFT"
     }
   ],
   "bindings": {
@@ -213,7 +213,7 @@
       0.0
     ],
     "ObstacleAvoidance.safe_radius": 0.12,
-    "VelocityLimit.vmax": 0.8,
+    "VelocityLimit.vmax": 0.2,
     "OrientationLimit.q_ref": [
       0.50540,
       -0.49933,

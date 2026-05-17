@@ -67,7 +67,7 @@
       "type": "eventually_during",
       "predicate": "AtWaypoint",
       "weight": 8.0,
-      "modality": "REQUIRE",
+      "modality": "SOFT",
       "time_window": [
         0.0,
         4.0
@@ -78,7 +78,7 @@
       "type": "always_during",
       "predicate": "HoldAtWaypoint",
       "weight": 10.0,
-      "modality": "REQUIRE",
+      "modality": "SOFT",
       "time_window": [
         4.05,
         6.0
@@ -89,21 +89,21 @@
       "type": "eventually",
       "predicate": "AtGoalPose",
       "weight": 8.0,
-      "modality": "REQUIRE",
+      "modality": "SOFT",
       "_comment": "Reach the human (goal) at some point in phase 3"
     },
     {
       "type": "always",
       "predicate": "LaptopExclusion",
       "weight": 15.0,
-      "modality": "REQUIRE",
+      "modality": "SOFT",
       "_comment": "Never enter laptop circumscribed circle (diagonal radius)"
     },
     {
       "type": "always",
       "predicate": "VelocityLimit",
       "weight": 8.0,
-      "modality": "REQUIRE",
+      "modality": "HARD",
       "_comment": "Cap Cartesian speed to 0.8 m/s"
     }
   ],

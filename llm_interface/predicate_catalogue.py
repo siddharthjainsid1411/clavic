@@ -8,11 +8,11 @@
 # The validator uses this to hard-reject or silently clamp any LLM output
 # before it reaches the optimizer.
 
-# Weight clamp ranges per modality.
-# PREFER weights are the actual optimizer cost multipliers.
-# REQUIRE and HARD weights are documentation only (compiler uses fixed 500),
-# but are still validated to catch out-of-range values.
+# Weight clamp ranges per modality.  HARD weights are documentation/diagnostic;
+# SOFT/PREFER weights are optimizer cost multipliers.  REQUIRE remains accepted
+# only as a legacy alias and is normalized to SOFT by the parser.
 WEIGHT_RANGE = {
+    "SOFT":    (1.0, 20.0),
     "PREFER":  (1.0, 20.0),
     "REQUIRE": (1.0, 20.0),
     "HARD":    (1.0, 20.0),
@@ -27,7 +27,7 @@ WEIGHT_RANGE = {
 CATALOGUE = {
 
     "AtGoal": {
-        "allowed_modalities": ["REQUIRE", "PREFER"],
+        "allowed_modalities": ["SOFT", "PREFER", "REQUIRE"],
         "allowed_operators":  ["eventually", "eventually_during"],
         "params": {
             "waypoint":   {"type": "list3"},
@@ -37,7 +37,7 @@ CATALOGUE = {
     },
 
     "AtWaypoint": {
-        "allowed_modalities": ["REQUIRE", "PREFER"],
+        "allowed_modalities": ["SOFT", "PREFER", "REQUIRE"],
         "allowed_operators":  ["eventually", "eventually_during"],
         "params": {
             "waypoint":   {"type": "list3"},
@@ -47,7 +47,7 @@ CATALOGUE = {
     },
 
     "HoldAtWaypoint": {
-        "allowed_modalities": ["REQUIRE"],
+        "allowed_modalities": ["SOFT", "REQUIRE"],
         "allowed_operators":  ["always_during"],
         "params": {
             "waypoint":         {"type": "list3"},
@@ -72,7 +72,7 @@ CATALOGUE = {
     },
 
     "HumanComfortDistance": {
-        "allowed_modalities": ["PREFER"],
+        "allowed_modalities": ["SOFT", "PREFER"],
         "allowed_operators":  ["always"],
         "params": {
             "human_position":      {"type": "list3"},
@@ -82,7 +82,7 @@ CATALOGUE = {
     },
 
     "ObstacleAvoidance": {
-        "allowed_modalities": ["HARD", "PREFER"],
+        "allowed_modalities": ["HARD", "SOFT", "PREFER"],
         "allowed_operators":  ["always"],
         "params": {
             "obstacle_position": {"type": "list3"},
@@ -96,7 +96,7 @@ CATALOGUE = {
     },
 
     "VelocityLimit": {
-        "allowed_modalities": ["REQUIRE"],
+        "allowed_modalities": ["HARD", "SOFT", "REQUIRE"],
         "allowed_operators":  ["always", "always_during"],
         "params": {
             "vmax": {"type": "float", "default": 0.5, "min": 0.05, "max": 2.0},
@@ -105,7 +105,7 @@ CATALOGUE = {
     },
 
     "AngularVelocityLimit": {
-        "allowed_modalities": ["REQUIRE"],
+        "allowed_modalities": ["HARD", "SOFT", "REQUIRE"],
         "allowed_operators":  ["always", "always_during"],
         "params": {
             "omega_max": {"type": "float", "default": 1.0, "min": 0.1, "max": 5.0},
@@ -114,7 +114,7 @@ CATALOGUE = {
     },
 
     "ZeroVelocity": {
-        "allowed_modalities": ["REQUIRE"],
+        "allowed_modalities": ["SOFT", "REQUIRE"],
         "allowed_operators":  ["always_during"],
         "params": {
             "speed_threshold": {"type": "float", "default": 0.05, "min": 0.01, "max": 0.20},
@@ -123,7 +123,7 @@ CATALOGUE = {
     },
 
     "OrientationLimit": {
-        "allowed_modalities": ["REQUIRE"],
+        "allowed_modalities": ["HARD", "SOFT", "REQUIRE"],
         "allowed_operators":  ["always", "always_during"],
         "params": {
             "q_ref":         {"type": "list4"},
@@ -133,7 +133,7 @@ CATALOGUE = {
     },
 
     "OrientationAtTarget": {
-        "allowed_modalities": ["REQUIRE", "PREFER"],
+        "allowed_modalities": ["SOFT", "PREFER", "REQUIRE"],
         "allowed_operators":  ["eventually", "eventually_during"],
         "params": {
             "q_target":       {"type": "list4"},
@@ -143,7 +143,7 @@ CATALOGUE = {
     },
 
     "OrientationHold": {
-        "allowed_modalities": ["REQUIRE"],
+        "allowed_modalities": ["SOFT", "REQUIRE"],
         "allowed_operators":  ["always_during"],
         "params": {
             "q_target":       {"type": "list4"},
@@ -154,7 +154,7 @@ CATALOGUE = {
     },
 
     "DirectionalStiffnessNearHuman": {
-        "allowed_modalities": ["REQUIRE", "PREFER"],
+        "allowed_modalities": ["SOFT", "PREFER", "REQUIRE"],
         "allowed_operators":  ["always"],
         "params": {
             "human_position":     {"type": "list3"},

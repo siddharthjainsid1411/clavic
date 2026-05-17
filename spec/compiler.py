@@ -40,10 +40,12 @@ class Compiler:
         soft_clauses = []
 
         for clause in taskspec.clauses:
-            # HARD and REQUIRE both use the slack-penalty path (Layer 3).
-            # The geometric guarantee for HARD (Layers 1+2) is handled by
-            # MultiPhaseCertifiedPolicy.setup_hard_obstacles_from_taskspec().
-            if clause.modality in ("HARD", "REQUIRE"):
+            # New semantics:
+            #   HARD -> runtime/structural safety guarantee plus diagnostic cost.
+            #   SOFT -> weighted wTLTL robustness cost.
+            # json_parser maps legacy REQUIRE/PREFER labels to SOFT, so the
+            # compiler no longer depends on REQUIRE as a separate modality.
+            if clause.modality == "HARD":
                 hard_clauses.append(clause)
             else:
                 soft_clauses.append(clause)
@@ -52,13 +54,11 @@ class Compiler:
 
             total_cost = 0.0
 
-            # --- Hard/Require clauses with slack relaxation ---
-            # Fixed SLACK_WEIGHT for ALL HARD/REQUIRE clauses regardless of clause.weight.
-            # NOTE: clause.weight is intentionally NOT used here — it only applies to
-            # PREFER clauses (soft cost path below). This is by design so that all
-            # hard constraints are penalised equally strongly (500 × s²) and the tuned
-            # optimisation balance from the working experiments is preserved.
-            # The weight field on HARD/REQUIRE clauses is purely documentation/intent.
+            # --- HARD clauses with slack diagnostics ---
+            # HARD predicates should be enforced by runtime/structural safety
+            # mechanisms (CBF, projector, CGMS).  This cost remains as a diagnostic
+            # and optimizer shaping term if a hard layer is temporarily unavailable
+            # or a discretization/projection interaction creates a violation.
             SLACK_WEIGHT = 500.0
 
             for clause in hard_clauses:
@@ -66,7 +66,7 @@ class Compiler:
                 s = max(0.0, -rho)
                 total_cost += SLACK_WEIGHT * (s ** 2)
 
-            # --- Soft clauses ---
+            # --- SOFT clauses ---
             for clause in soft_clauses:
                 rho = self._evaluate_clause(trace, clause)
                 J = max(0.0, -rho)

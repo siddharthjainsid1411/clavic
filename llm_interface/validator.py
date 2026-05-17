@@ -18,7 +18,7 @@ VALID_OPERATORS = {
     "always_during", "eventually_during",
     "until",
 }
-VALID_MODALITIES = {"HARD", "REQUIRE", "PREFER"}
+VALID_MODALITIES = {"HARD", "SOFT", "REQUIRE", "PREFER"}
 
 
 def _is_valid_shape_points(value) -> bool:
@@ -75,7 +75,7 @@ def validate_and_clamp(spec_dict: dict) -> tuple[dict, list[str], list[str]]:
     bindings = spec["bindings"]
 
     # Geometry is now deterministic from modality in json_parser:
-    #   HARD -> cylinder_infinite, REQUIRE/PREFER -> sphere.
+    #   HARD -> cylinder_infinite, SOFT/PREFER/legacy REQUIRE -> sphere.
     # Remove geometry overrides from LLM/user JSON for consistency.
     for idx, clause in enumerate(spec["clauses"]):
         if "hard_geometry" in clause:
@@ -131,7 +131,15 @@ def validate_and_clamp(spec_dict: dict) -> tuple[dict, list[str], list[str]]:
         if modality not in VALID_MODALITIES:
             errors.append(
                 f"{tag} ({predicate}): unknown modality '{modality}'. "
-                f"Valid: HARD, REQUIRE, PREFER"
+                f"Valid: HARD, SOFT"
+            )
+        elif modality == "REQUIRE":
+            warnings.append(
+                f"{tag} ({predicate}): modality REQUIRE is legacy; parser will normalize it."
+            )
+        elif modality == "PREFER":
+            warnings.append(
+                f"{tag} ({predicate}): modality PREFER is legacy; parser will normalize it to SOFT."
             )
 
         if predicate not in CATALOGUE:
