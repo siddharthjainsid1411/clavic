@@ -27,6 +27,7 @@ Plots (PNG only, 300 dpi):
     7. scene4_angular_velocity.png — omega norm vs time
     8. scene4_velocity_cbf.png — speed vs time-windowed vmax
     9. scene4_acceleration.png — linear & angular acceleration
+    10. scene4_obstacle_hocbf.png — obstacle HOCBF h, hdot, and active masks
 """
 
 import numpy as np
@@ -173,6 +174,22 @@ def print_diagnostics(trace, best_cost):
     if velocity_cbf and "post_projection_h" in velocity_cbf:
         cbf_min_h = float(np.nanmin(velocity_cbf["post_projection_h"]))
     window_active = int(np.sum(velocity_cbf.get("window_active", []))) if velocity_cbf else 0
+    obstacle_hocbf = trace.safety.get("obstacle_hocbf", {}) if hasattr(trace, "safety") else {}
+    obs_h_min = None
+    obs_hdot_min = None
+    obs_active_steps = 0
+    if obstacle_hocbf:
+        if "h" in obstacle_hocbf:
+            h_vals = np.asarray(obstacle_hocbf["h"], dtype=float)
+            if np.any(np.isfinite(h_vals)):
+                obs_h_min = float(np.nanmin(h_vals))
+        if "hdot" in obstacle_hocbf:
+            hdot_vals = np.asarray(obstacle_hocbf["hdot"], dtype=float)
+            if np.any(np.isfinite(hdot_vals)):
+                obs_hdot_min = float(np.nanmin(hdot_vals))
+        obs_active_steps = int(np.sum(obstacle_hocbf.get("active", [])))
+    proj = trace.safety.get("obstacle_projection", {}) if hasattr(trace, "safety") else {}
+    proj_active_steps = int(np.sum(proj.get("active", []))) if proj else 0
 
     def _mask_intervals(times, mask, max_show=6):
         if mask is None or len(mask) == 0:
@@ -236,6 +253,15 @@ def print_diagnostics(trace, best_cost):
     av = trace.safety.get("angular_velocity_cbf", {}) if hasattr(trace, "safety") else {}
     if av:
         print(f"  AngVel CBF active : {_mask_intervals(t, av.get('active', []))}")
+    if obstacle_hocbf:
+        print(
+            f"  Obstacle HOCBF    : active_steps={obs_active_steps}, "
+            f"min_h={obs_h_min}, min_hdot={obs_hdot_min}"
+        )
+        print(f"  Obstacle HOCBF on : {_mask_intervals(t, obstacle_hocbf.get('active', []))}")
+    if proj:
+        print(f"  Projection active : steps={proj_active_steps}")
+        print(f"  Projection windows: {_mask_intervals(t, proj.get('active', []))}")
     print(f"  Obstacle clearance: {obs_cm:.1f} cm  (HARD {OBSTACLE_GEOMETRY}, r={OBS_RAD:.2f} m)")
     print(f"  Pts inside obs    : {n_inside}  (HARD: must be 0)")
     print(f"  tr(K) range       : [{trK.min():.0f}, {trK.max():.0f}] N/m")
@@ -855,6 +881,65 @@ def plot_acceleration(trace, best_cost, base="exp2_acceleration"):
     plt.close()
 
 
+# =====================================================================
+#  PLOT 10 — obstacle HOCBF diagnostics
+# =====================================================================
+def plot_obstacle_hocbf(trace, best_cost, base="exp2_obstacle_hocbf"):
+    ob = trace.safety.get("obstacle_hocbf", {}) if hasattr(trace, "safety") else {}
+    if not ob:
+        print("No obstacle HOCBF data — skipping.")
+        return
+    t = trace.time
+    h = np.asarray(ob.get("h", []), dtype=float)
+    hdot = np.asarray(ob.get("hdot", []), dtype=float)
+    active = np.asarray(ob.get("active", []), dtype=bool)
+    proj = trace.safety.get("obstacle_projection", {}) if hasattr(trace, "safety") else {}
+    proj_active = np.asarray(proj.get("active", []), dtype=bool)
+
+    fig, axes = plt.subplots(2, 1, figsize=(10, 7), sharex=True)
+    for ax in axes:
+        ax.axvspan(0,            T_CARRY_END, alpha=0.025, color=C_CARRY, zorder=0)
+        ax.axvspan(T_CARRY_END,  T_HOLD_END,  alpha=0.040, color=C_HOLD,  zorder=0)
+        ax.axvspan(T_HOLD_END,   T_CONT_END,  alpha=0.025, color=C_CONT,  zorder=0)
+        for tv in [T_CARRY_END, T_HOLD_END]:
+            ax.axvline(tv, color="#888888", lw=0.8, ls="--", alpha=0.50)
+
+    ax0, ax1 = axes
+    ax0.plot(t, h, color="#4C72B0", lw=2.0, label=r"$h(x)$")
+    ax0.axhline(0.0, color="#CC4444", ls=":", lw=1.0, alpha=0.80,
+                label=r"$h=0$ (boundary)")
+    ax0.set_ylabel("$h(x)$", fontsize=11)
+    ax0.set_title(f"{SCENE_LABEL}\nObstacle HOCBF diagnostics", fontsize=9)
+    ax0.grid(True, alpha=0.25)
+
+    ax1.plot(t, hdot, color="#DD8452", lw=1.8, label=r"$\dot h$")
+    ax1.axhline(0.0, color="#999999", ls="-", lw=0.5, alpha=0.30)
+    hdot_lo = float(np.nanmin(hdot)) if hdot.size and np.any(np.isfinite(hdot)) else -1.0
+    hdot_hi = float(np.nanmax(hdot)) if hdot.size and np.any(np.isfinite(hdot)) else 1.0
+    if len(active) == len(t) and np.any(active):
+        ax1.fill_between(t, hdot_lo, hdot_hi,
+                         where=active, color="#AAAAAA", alpha=0.18,
+                         label="HOCBF active")
+    if len(proj_active) == len(t) and np.any(proj_active):
+        ax1.fill_between(t, hdot_lo, hdot_hi,
+                         where=proj_active, color="#7F7F7F", alpha=0.18,
+                         label="Projection active")
+    ax1.set_ylabel(r"$\dot h$", fontsize=11)
+    ax1.set_xlabel("Time (s)", fontsize=11)
+    ax1.set_xlim(0, T_CONT_END)
+    ax1.grid(True, alpha=0.25)
+
+    for ax in axes:
+        ax.legend(fontsize=9, loc="upper left", bbox_to_anchor=(1.01, 1.0),
+                  framealpha=0.9, edgecolor="lightgrey", fancybox=False)
+
+    fig.subplots_adjust(right=0.78)
+    plt.tight_layout()
+    plt.savefig(f"{base}.png", dpi=300, bbox_inches="tight", facecolor="white")
+    print(f"Saved: {base}.png")
+    plt.close()
+
+
 # ======================================================================
 #  CSV export
 # ======================================================================
@@ -1032,8 +1117,9 @@ def main():
     plot_angular_velocity(trace_final, best_cost)
     plot_velocity_cbf(trace_final, best_cost)
     plot_acceleration(trace_final, best_cost)
+    plot_obstacle_hocbf(trace_final, best_cost)
 
-    print("Exp 2 done — 9 plots saved as PNG.")
+    print("Exp 2 done — 10 plots saved as PNG.")
 
 
 if __name__ == "__main__":

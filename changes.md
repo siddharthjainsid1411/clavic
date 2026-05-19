@@ -1,5 +1,10 @@
 # Changes Log
 
+## 2026-05-19 00:37 IST
+
+- Added runtime obstacle HOCBF filter (relative-degree-2) with epsilon-inflated safe radius and per-step diagnostics, applied after DMP repulsion and before velocity CBF. Affects [core/cbf_filter.py](core/cbf_filter.py), [core/cgms/dmp_with_gain.py](core/cgms/dmp_with_gain.py), and [core/multi_phase_policy.py](core/multi_phase_policy.py).
+- Added projection-activation logging and obstacle HOCBF plots/diagnostics for Exp 2, including projection mask recording. Affects [core/obstacle_projection.py](core/obstacle_projection.py), [core/multi_phase_policy.py](core/multi_phase_policy.py), and [main_exp2.py](main_exp2.py).
+
 ## 2026-05-18 00:28 IST
 
 - Added time-windowed VelocityLimit CBF activation and diagnostics (window_active, vmax_active), including time-aware filtering in the velocity CBF path. Affects [core/cbf_filter.py](core/cbf_filter.py), [core/cgms/dmp_with_gain.py](core/cgms/dmp_with_gain.py), and [core/multi_phase_policy.py](core/multi_phase_policy.py).

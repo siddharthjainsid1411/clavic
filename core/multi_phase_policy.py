@@ -21,6 +21,7 @@ we keep them identical for simplicity).
 import numpy as np
 from core.cbf_filter import (
     AngularVelocityCBFConfig,
+    ObstacleHOCBFConfig,
     OrientationHOCBFConfig,
     VelocityCBFConfig,
 )
@@ -263,6 +264,9 @@ class MultiPhaseCertifiedPolicy:
             "strength"    : float  (optional)  — DMP repulsion strength (default 0.05).
             "infl_factor" : float  (optional)  — influence zone = radius * infl_factor
                                                  (default 2.5)
+            "hocbf_alpha1": float  (optional)  — obstacle HOCBF alpha1 (default 8.0)
+            "hocbf_alpha2": float  (optional)  — obstacle HOCBF alpha2 (default 8.0)
+            "hocbf_eps"   : float  (optional)  — radius inflation epsilon (default 0.02)
 
         Backward-compatible alias (deprecated — prefer "avoidance"):
             "hard"        : bool   (optional)  — True → "HARD", False → "SOFT".
@@ -337,9 +341,27 @@ class MultiPhaseCertifiedPolicy:
                 "geometry": g,
             })
 
+        hocbf_obs = []
+        for obs in hard_obs:
+            c = np.asarray(obs["center"], float)
+            r = float(obs["radius"])
+            g = str(obs.get("geometry", "sphere"))
+            alpha1 = float(obs.get("hocbf_alpha1", 8.0))
+            alpha2 = float(obs.get("hocbf_alpha2", 8.0))
+            eps = float(obs.get("hocbf_eps", 0.02))
+            hocbf_obs.append(ObstacleHOCBFConfig(
+                center=c,
+                radius=r,
+                geometry=g,
+                alpha1=alpha1,
+                alpha2=alpha2,
+                eps=eps,
+            ))
+
         # Inject into every phase DMP
         for dmp in self.dmps:
             dmp.repulsive_obstacles = rep_obs
+            dmp.obstacle_hocbf_configs = hocbf_obs
 
     # ------------------------------------------------------------------ #
     def parameter_dimension(self):
@@ -385,6 +407,7 @@ class MultiPhaseCertifiedPolicy:
         all_quat  = []      # quaternion trajectories
         all_omega = []      # angular velocity trajectories
         all_velocity_cbf = []
+        all_obstacle_hocbf = []
         all_orientation_hocbf = []
         all_angular_velocity_cbf = []
 
@@ -448,6 +471,7 @@ class MultiPhaseCertifiedPolicy:
             K     = plan["K"]
             D     = plan["D"]
             velocity_cbf = plan.get("safety", {}).get("velocity_cbf", None)
+            obstacle_hocbf = plan.get("safety", {}).get("obstacle_hocbf", None)
             prev_vel_end = yd[-1].copy()
 
             # Pass final Q of this phase as initial Q of next phase → no jerk at boundary
@@ -509,6 +533,11 @@ class MultiPhaseCertifiedPolicy:
                         key: (val[1:] if isinstance(val, np.ndarray) else val)
                         for key, val in velocity_cbf.items()
                     }
+                if obstacle_hocbf is not None:
+                    obstacle_hocbf = {
+                        key: (val[1:] if isinstance(val, np.ndarray) else val)
+                        for key, val in obstacle_hocbf.items()
+                    }
                 if q_des is not None:
                     q_des = q_des[1:]
                     omega = omega[1:]
@@ -532,6 +561,8 @@ class MultiPhaseCertifiedPolicy:
             all_raw_sd.append(raw_sd)
             if velocity_cbf is not None:
                 all_velocity_cbf.append(velocity_cbf)
+            if obstacle_hocbf is not None:
+                all_obstacle_hocbf.append(obstacle_hocbf)
             if q_des is not None:
                 all_quat.append(q_des)
                 all_omega.append(omega)
@@ -556,7 +587,9 @@ class MultiPhaseCertifiedPolicy:
         # and do not depend on position values.
         pos_full = np.concatenate(all_pos)
         vel_full = np.concatenate(all_vel)
-        pos_full, vel_full = self._projector.project(pos_full, vel_full, self.DT)
+        pos_full, vel_full, proj_active = self._projector.project(
+            pos_full, vel_full, self.DT, return_mask=True
+        )
 
         safety = {}
         if all_velocity_cbf:
@@ -603,6 +636,19 @@ class MultiPhaseCertifiedPolicy:
             for key in keys:
                 oh[key] = np.concatenate([part[key] for part in all_orientation_hocbf])
             safety["orientation_hocbf"] = oh
+
+        if all_obstacle_hocbf:
+            keys = ("h", "hdot", "active", "correction_norm")
+            ob = {}
+            for key in keys:
+                ob[key] = np.concatenate([part[key] for part in all_obstacle_hocbf])
+            ob["enabled"] = any(bool(part.get("enabled", False))
+                                 for part in all_obstacle_hocbf)
+            safety["obstacle_hocbf"] = ob
+
+        safety["obstacle_projection"] = {
+            "active": proj_active,
+        }
 
         if all_angular_velocity_cbf:
             keys = (

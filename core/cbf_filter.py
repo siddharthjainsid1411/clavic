@@ -64,6 +64,20 @@ class AngularVelocityCBFConfig:
     tolerance: float = 1e-10
 
 
+@dataclass
+class ObstacleHOCBFConfig:
+    """Configuration for an obstacle HOCBF in Cartesian space."""
+
+    center: np.ndarray
+    radius: float
+    geometry: str = "sphere"  # "sphere" or "cylinder_infinite"
+    alpha1: float = 8.0
+    alpha2: float = 8.0
+    eps: float = 0.02
+    enabled: bool = True
+    tolerance: float = 1e-10
+
+
 def filter_velocity_acceleration(a_nom, v, config, t=None):
     """
     Project nominal acceleration onto the velocity-CBF safe half-space.
@@ -273,6 +287,89 @@ def filter_angular_velocity_acceleration(beta_nom, omega, config, t=None):
         "active": True,
         "correction_norm": float(np.linalg.norm(correction)),
         "omega_norm": omega_norm,
+        "enabled": True,
+    }
+
+
+def filter_obstacle_acceleration(a_nom, x, v, config):
+    """
+    Project nominal acceleration onto the obstacle HOCBF safe half-space.
+
+    The obstacle constraint has relative degree 2:
+      h(x) = ||x-c||^2 - r_safe^2 >= 0
+      h_dot = 2(x-c)^T v
+      h_ddot = 2 v^T v + 2(x-c)^T a
+
+    HOCBF condition:
+      h_ddot + (alpha1 + alpha2) h_dot + alpha1*alpha2*h >= 0
+
+    This yields the affine constraint: n^T a >= b
+      n = 2(x-c)
+      b = -2 v^T v - (alpha1+alpha2) h_dot - alpha1*alpha2*h
+    """
+    a_nom = np.asarray(a_nom, dtype=float).reshape(3)
+    x = np.asarray(x, dtype=float).reshape(3)
+    v = np.asarray(v, dtype=float).reshape(3)
+
+    if config is None or not config.enabled:
+        return a_nom.copy(), {
+            "h": np.inf,
+            "hdot": 0.0,
+            "active": False,
+            "correction_norm": 0.0,
+            "enabled": False,
+        }
+
+    c = np.asarray(config.center, dtype=float).reshape(3)
+    r_safe = float(config.radius) + float(config.eps)
+    tol = float(config.tolerance)
+
+    if r_safe <= 0.0:
+        raise ValueError(f"Obstacle HOCBF requires r_safe > 0, got {r_safe}.")
+    if config.alpha1 <= 0.0 or config.alpha2 <= 0.0:
+        raise ValueError("Obstacle HOCBF alpha1 and alpha2 must be positive.")
+
+    if str(config.geometry).lower() == "cylinder_infinite":
+        diff = np.array([x[0] - c[0], x[1] - c[1], 0.0])
+        v_use = np.array([v[0], v[1], 0.0])
+    else:
+        diff = x - c
+        v_use = v
+
+    h = float(np.dot(diff, diff) - r_safe * r_safe)
+    hdot = 2.0 * float(np.dot(diff, v_use))
+    n = 2.0 * diff
+    b = -2.0 * float(np.dot(v_use, v_use))
+    b += -(float(config.alpha1) + float(config.alpha2)) * hdot
+    b += -float(config.alpha1) * float(config.alpha2) * h
+
+    lhs = float(np.dot(n, a_nom))
+    if lhs >= b - tol:
+        return a_nom.copy(), {
+            "h": h,
+            "hdot": hdot,
+            "active": False,
+            "correction_norm": 0.0,
+            "enabled": True,
+        }
+
+    denom = float(np.dot(n, n))
+    if denom <= tol:
+        return a_nom.copy(), {
+            "h": h,
+            "hdot": hdot,
+            "active": False,
+            "correction_norm": 0.0,
+            "enabled": True,
+        }
+
+    correction = ((b - lhs) / denom) * n
+    a_safe = a_nom + correction
+    return a_safe, {
+        "h": h,
+        "hdot": hdot,
+        "active": True,
+        "correction_norm": float(np.linalg.norm(correction)),
         "enabled": True,
     }
 

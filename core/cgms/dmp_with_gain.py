@@ -1,5 +1,5 @@
 import numpy as np
-from core.cbf_filter import filter_velocity_acceleration
+from core.cbf_filter import filter_obstacle_acceleration, filter_velocity_acceleration
 from .utils import lt_pack, lt_unpack, sym
 from .minimum_jerk import MinimumJerk
 from .dynamical_systems import DynamicalSystems
@@ -69,6 +69,8 @@ class DMPWithGainScheduling:
         # Optional runtime CBF filter for Cartesian velocity limits.
         # Configured by MultiPhaseCertifiedPolicy from HARD VelocityLimit clauses.
         self.velocity_cbf_config = None
+        # Optional obstacle HOCBF filters (relative-degree-2 constraints).
+        self.obstacle_hocbf_configs = []
         self.ds         = DynamicalSystems(self.tau)
         
         y, yd, ydd, ts  = MinimumJerk(self.start, self.end, self.tau, self.dt).generate()
@@ -168,6 +170,11 @@ class DMPWithGainScheduling:
         cbf_speed = np.zeros(T)
         cbf_vmax_active = np.full(T, np.nan)
         cbf_window_active = np.zeros(T, dtype=bool)
+        obs_h = np.full(T, np.nan)
+        obs_hdot = np.full(T, np.nan)
+        obs_active = np.zeros(T, dtype=bool)
+        obs_correction = np.zeros(T)
+        obs_enabled = bool(self.obstacle_hocbf_configs)
 
         def dmp(t, y, yd):
             phase = self.ds.time_system(np.array([t]))[0]
@@ -221,18 +228,41 @@ class DMPWithGainScheduling:
                 else:
                     raise ValueError(f"Unsupported obstacle geometry: {geometry}")
 
+            obs_min_h = np.nan
+            obs_min_hdot = np.nan
+            obs_is_active = False
+            obs_corr = 0.0
+            if self.obstacle_hocbf_configs:
+                obs_min_h = np.inf
+                obs_min_hdot = 0.0
+                a_before_obs = net_accel.copy()
+                for cfg in self.obstacle_hocbf_configs:
+                    net_accel, obs_diag = filter_obstacle_acceleration(net_accel, y, yd, cfg)
+                    if obs_diag["h"] < obs_min_h:
+                        obs_min_h = obs_diag["h"]
+                        obs_min_hdot = obs_diag["hdot"]
+                    obs_is_active = obs_is_active or obs_diag["active"]
+                obs_corr = float(np.linalg.norm(net_accel - a_before_obs))
+
             global_t = self.time_offset + t
             net_accel, diag = filter_velocity_acceleration(
                 net_accel, yd, velocity_cbf, t=global_t
             )
-            return net_accel, diag
+            obs_summary = {
+                "h": obs_min_h,
+                "hdot": obs_min_hdot,
+                "active": obs_is_active,
+                "correction_norm": obs_corr,
+                "enabled": obs_enabled,
+            }
+            return net_accel, diag, obs_summary
 
         for k in range(T-1):
             t0 = ts[k]; h = ts[k+1] - ts[k]
-            k1y = yd[k];               k1v, diag = dmp(t0,            y[k],                    yd[k])
-            k2y = yd[k] + 0.5*h*k1v;   k2v, _    = dmp(t0 + 0.5*h,    y[k] + 0.5*h*k1y,        yd[k] + 0.5*h*k1v)
-            k3y = yd[k] + 0.5*h*k2v;   k3v, _    = dmp(t0 + 0.5*h,    y[k] + 0.5*h*k2y,        yd[k] + 0.5*h*k2v)
-            k4y = yd[k] + 1.0*h*k3v;   k4v, _    = dmp(t0 + 1.0*h,    y[k] + 1.0*h*k3y,        yd[k] + h*k3v)
+            k1y = yd[k];               k1v, diag, obs_diag = dmp(t0,            y[k],                    yd[k])
+            k2y = yd[k] + 0.5*h*k1v;   k2v, _, _           = dmp(t0 + 0.5*h,    y[k] + 0.5*h*k1y,        yd[k] + 0.5*h*k1v)
+            k3y = yd[k] + 0.5*h*k2v;   k3v, _, _           = dmp(t0 + 0.5*h,    y[k] + 0.5*h*k2y,        yd[k] + 0.5*h*k2v)
+            k4y = yd[k] + 1.0*h*k3v;   k4v, _, _           = dmp(t0 + 1.0*h,    y[k] + 1.0*h*k3y,        yd[k] + h*k3v)
             y[k+1]  = y[k]  + (h/6.0)*(k1y + 2*k2y + 2*k3y + k4y)
             yd[k+1] = yd[k] + (h/6.0)*(k1v + 2*k2v + 2*k3v + k4v)
             ydd[k]  = k1v
@@ -247,7 +277,11 @@ class DMPWithGainScheduling:
                 else float(diag.get("vmax_active"))
             )
             cbf_window_active[k] = bool(diag.get("window_active", False))
-        ydd[-1], diag = dmp(ts[-1], y[-1], yd[-1])
+            obs_h[k] = obs_diag["h"]
+            obs_hdot[k] = obs_diag["hdot"]
+            obs_active[k] = obs_diag["active"]
+            obs_correction[k] = obs_diag["correction_norm"]
+        ydd[-1], diag, obs_diag = dmp(ts[-1], y[-1], yd[-1])
         cbf_h[-1] = diag["h"]
         cbf_lhs[-1] = diag["cbf_lhs"]
         cbf_rhs[-1] = diag["cbf_rhs"]
@@ -259,6 +293,10 @@ class DMPWithGainScheduling:
             else float(diag.get("vmax_active"))
         )
         cbf_window_active[-1] = bool(diag.get("window_active", False))
+        obs_h[-1] = obs_diag["h"]
+        obs_hdot[-1] = obs_diag["hdot"]
+        obs_active[-1] = obs_diag["active"]
+        obs_correction[-1] = obs_diag["correction_norm"]
 
         x    = self.ds.time_system(ts)
         xdot = -np.ones_like(x) / self.tau
@@ -321,6 +359,13 @@ class DMPWithGainScheduling:
                     "speed": cbf_speed,
                     "vmax_active": cbf_vmax_active,
                     "window_active": cbf_window_active,
-                }
+                },
+                "obstacle_hocbf": {
+                    "enabled": obs_enabled,
+                    "h": obs_h,
+                    "hdot": obs_hdot,
+                    "active": obs_active,
+                    "correction_norm": obs_correction,
+                },
             },
         }

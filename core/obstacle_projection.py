@@ -92,7 +92,7 @@ class ObstacleProjector:
             "geometry": str(geometry),
         })
 
-    def project(self, pos, vel, dt):
+    def project(self, pos, vel, dt, return_mask=False):
         """
         Project positions outside all obstacles and recompute velocity.
 
@@ -106,11 +106,16 @@ class ObstacleProjector:
         -------
         pos_safe : (T, 3)  — projected positions, guaranteed outside all obstacles
         vel_safe : (T, 3)  — finite-difference velocity on projected path
+        projected : (T,) bool (optional)
+            True where any obstacle projection was applied.
         """
         if not self.obstacles:
+            if return_mask:
+                return pos.copy(), vel.copy(), np.zeros(pos.shape[0], dtype=bool)
             return pos.copy(), vel.copy()
 
         pos_safe = pos.copy()
+        projected = np.zeros(pos.shape[0], dtype=bool)
 
         # Default escape direction (used only in degenerate case d≈0)
         _e_default = np.array([0.70710678, 0.70710678, 0.0])
@@ -126,6 +131,7 @@ class ObstacleProjector:
                 inside = d < r
                 if not np.any(inside):
                     continue
+                projected |= inside
 
                 for t_idx in np.where(inside)[0]:
                     dist = d[t_idx]
@@ -140,6 +146,7 @@ class ObstacleProjector:
                 inside = d_xy < r
                 if not np.any(inside):
                     continue
+                projected |= inside
 
                 for t_idx in np.where(inside)[0]:
                     dist_xy = d_xy[t_idx]
@@ -162,4 +169,6 @@ class ObstacleProjector:
         else:
             vel_safe[:] = 0.0
 
+        if return_mask:
+            return pos_safe, vel_safe, projected
         return pos_safe, vel_safe
