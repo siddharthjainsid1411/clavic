@@ -715,9 +715,13 @@ def main():
 
     policy = MultiPhaseCertifiedPolicy(taskspec.phases, K0=300.0, D0=30.0)
 
+    # Register runtime CBFs (velocity/orientation/ang-vel) from JSON clauses.
+    # There is no HARD obstacle clause in exp3b, so no obstacle HOCBF/projector
+    # is configured by this call.
+    policy.setup_hard_obstacles_from_taskspec(taskspec)
+
     # avoidance="NONE": no DMP repulsion, no hard projector.
     # exp3b uses modality="PREFER" in JSON (intentional soft avoidance for comparison).
-    # There is no HARD clause, so setup_hard_obstacles_from_taskspec() would be a no-op.
     # We still call set_obstacles with avoidance="NONE" to explicitly disable DMP
     # repulsion and the radial projector — the soft PREFER cost is the only force.
     policy.set_obstacles([

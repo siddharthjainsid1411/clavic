@@ -171,6 +171,51 @@ def print_diagnostics(trace, best_cost):
         print(f"  Max tilt carry     : {np.degrees(max_tilt):.1f} deg  (limit 15)")
         print(f"  Pour error (end)   : {np.degrees(err_end):.1f} deg  (target < 10)")
         print(f"  Max angular vel    : {omega_max:.3f} rad/s  (limit 1.5)")
+
+    def _mask_intervals(times, mask, max_show=6):
+        if mask is None or len(mask) == 0:
+            return "none"
+        mask = np.asarray(mask, dtype=bool)
+        if not np.any(mask):
+            return "none"
+        idx = np.where(mask)[0]
+        runs = []
+        start = idx[0]
+        prev = idx[0]
+        for i in idx[1:]:
+            if i == prev + 1:
+                prev = i
+                continue
+            runs.append((times[start], times[prev]))
+            start = i
+            prev = i
+        runs.append((times[start], times[prev]))
+        parts = [f"[{s:.2f},{e:.2f}]" for s, e in runs[:max_show]]
+        if len(runs) > max_show:
+            parts.append("...")
+        return ", ".join(parts)
+
+    rep = trace.safety.get("repulsive_force", {}) if hasattr(trace, "safety") else {}
+    if rep:
+        rep_active = rep.get("active", [])
+        print(f"  Repulsion active   : {int(np.sum(rep_active))} steps")
+        print(f"  Repulsion windows  : {_mask_intervals(trace.time, rep_active)}")
+
+    ob = trace.safety.get("obstacle_hocbf", {}) if hasattr(trace, "safety") else {}
+    if ob:
+        print(f"  Obstacle HOCBF     : {_mask_intervals(trace.time, ob.get('active', []))}")
+
+    vc = trace.safety.get("velocity_cbf", {}) if hasattr(trace, "safety") else {}
+    if vc:
+        print(f"  Velocity CBF       : {_mask_intervals(trace.time, vc.get('active', []))}")
+
+    oh = trace.safety.get("orientation_hocbf", {}) if hasattr(trace, "safety") else {}
+    if oh:
+        print(f"  Orientation HOCBF  : {_mask_intervals(trace.time, oh.get('active', []))}")
+
+    av = trace.safety.get("angular_velocity_cbf", {}) if hasattr(trace, "safety") else {}
+    if av:
+        print(f"  AngVel CBF         : {_mask_intervals(trace.time, av.get('active', []))}")
     print(f"{sep * 2}\n")
 
 
@@ -326,13 +371,15 @@ def plot_3d_workspace(trace, best_cost, base="exp3a_workspace"):
     ]
     handles, _ = ax.get_legend_handles_labels()
     ax.legend(handles=handles + extra, fontsize=8, loc="upper left",
-              bbox_to_anchor=(0.0, 0.97), framealpha=0.9,
+              bbox_to_anchor=(1.02, 1.0), framealpha=0.9,
               edgecolor="lightgrey", fancybox=False)
 
+    fig.subplots_adjust(right=0.78)
     plt.tight_layout()
-    for ext in ("png",):
-        plt.savefig(f"{base}.{ext}", dpi=300, bbox_inches="tight", facecolor="white")
+    fig.savefig(f"{base}.png", dpi=300, bbox_inches="tight", facecolor="white")
+    fig.savefig(f"{base}.pdf", bbox_inches="tight", facecolor="white")
     print(f"Saved: {base}.png")
+    print(f"Saved: {base}.pdf")
     plt.close()
 
 
@@ -415,13 +462,17 @@ def plot_2d_topdown(trace, best_cost, base="exp3a_topdown"):
     ax.set_ylim(ylo, yhi)
 
     ax.grid(True, alpha=0.25)
-    ax.legend(fontsize=8, loc="lower left", framealpha=0.9,
+    handles, labels = ax.get_legend_handles_labels()
+    ax.legend(handles, labels, fontsize=8, loc="upper left",
+              bbox_to_anchor=(1.02, 1.0), framealpha=0.9,
               edgecolor="lightgrey", fancybox=False)
 
+    fig.subplots_adjust(right=0.78)
     plt.tight_layout()
-    for ext in ("png",):
-        plt.savefig(f"{base}.{ext}", dpi=300, bbox_inches="tight", facecolor="white")
+    fig.savefig(f"{base}.png", dpi=300, bbox_inches="tight", facecolor="white")
+    fig.savefig(f"{base}.pdf", bbox_inches="tight", facecolor="white")
     print(f"Saved: {base}.png")
+    print(f"Saved: {base}.pdf")
     plt.close()
 
 
@@ -488,9 +539,10 @@ def plot_stiffness(trace, best_cost, base="exp3a_stiffness"):
               edgecolor="lightgrey", fancybox=False, ncol=2)
 
     plt.tight_layout()
-    for ext in ("png",):
-        plt.savefig(f"{base}.{ext}", dpi=300, bbox_inches="tight", facecolor="white")
+    fig.savefig(f"{base}.png", dpi=300, bbox_inches="tight", facecolor="white")
+    fig.savefig(f"{base}.pdf", bbox_inches="tight", facecolor="white")
     print(f"Saved: {base}.png")
+    print(f"Saved: {base}.pdf")
     plt.close()
 
 
@@ -548,9 +600,10 @@ def plot_orientation_euler(trace, best_cost, base="exp3a_orientation"):
               edgecolor="lightgrey", fancybox=False)
 
     plt.tight_layout()
-    for ext in ("png",):
-        plt.savefig(f"{base}.{ext}", dpi=300, bbox_inches="tight", facecolor="white")
+    fig.savefig(f"{base}.png", dpi=300, bbox_inches="tight", facecolor="white")
+    fig.savefig(f"{base}.pdf", bbox_inches="tight", facecolor="white")
     print(f"Saved: {base}.png")
+    print(f"Saved: {base}.pdf")
     plt.close()
 
 
@@ -661,9 +714,10 @@ def plot_kinematics(trace, best_cost, base="exp3a_kinematics"):
     # ── Shared title ─────────────────────────────────────────────────
     fig.suptitle("Exp 3a — Per-axis Position & Velocity", fontsize=12, y=1.01)
     plt.tight_layout()
-    for ext in ("png",):
-        plt.savefig(f"{base}.{ext}", dpi=300, bbox_inches="tight", facecolor="white")
+    fig.savefig(f"{base}.png", dpi=300, bbox_inches="tight", facecolor="white")
+    fig.savefig(f"{base}.pdf", bbox_inches="tight", facecolor="white")
     print(f"Saved: {base}.png")
+    print(f"Saved: {base}.pdf")
     plt.close()
 
 
@@ -822,8 +876,8 @@ def main():
     best_cost  = float("inf")
     best_theta = theta_init.copy()
 
-    hard_strength = 0.05
-    hard_infl = 2.5
+    hard_strength = 0.1
+    hard_infl = 4
     if obs_clause.hard_obstacle is not None:
         hard_strength = float(obs_clause.hard_obstacle.get("strength", hard_strength))
         hard_infl = float(obs_clause.hard_obstacle.get("infl_factor", hard_infl))

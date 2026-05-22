@@ -17,6 +17,7 @@ Geometry:
 Outputs (prefix scene5b_):
   scene5b_workspace.png / scene5b_topdown.png
   scene5b_stiffness.png / scene5b_orientation.png / scene5b_kinematics.png
+    scene5b_obstacle_hocbf.png
   scene5b_checkpoint.npz / scene5b_trajectory.csv
 """
 
@@ -127,6 +128,58 @@ def print_diagnostics(trace, best_cost):
     reached = np.any(d_goal < 0.06)
     t_reach = float(t[np.argmin(d_goal)]) if reached else float("nan")
 
+    obstacle_hocbf = trace.safety.get("obstacle_hocbf", {}) if hasattr(trace, "safety") else {}
+    obs_h_min = None
+    obs_hdot_min = None
+    obs_active_steps = 0
+    if obstacle_hocbf:
+        if "h" in obstacle_hocbf:
+            h_vals = np.asarray(obstacle_hocbf["h"], dtype=float)
+            if np.any(np.isfinite(h_vals)):
+                obs_h_min = float(np.nanmin(h_vals))
+        if "hdot" in obstacle_hocbf:
+            hdot_vals = np.asarray(obstacle_hocbf["hdot"], dtype=float)
+            if np.any(np.isfinite(hdot_vals)):
+                obs_hdot_min = float(np.nanmin(hdot_vals))
+        obs_active_steps = int(np.sum(obstacle_hocbf.get("active", [])))
+    proj = trace.safety.get("obstacle_projection", {}) if hasattr(trace, "safety") else {}
+    proj_active_steps = int(np.sum(proj.get("active", []))) if proj else 0
+
+    def _mask_intervals(times, mask, max_show=6):
+        if mask is None or len(mask) == 0:
+            return "none"
+        mask = np.asarray(mask, dtype=bool)
+        if not np.any(mask):
+            return "none"
+        idx = np.where(mask)[0]
+        runs = []
+        start = idx[0]
+        prev = idx[0]
+        for i in idx[1:]:
+            if i == prev + 1:
+                prev = i
+                continue
+            runs.append((times[start], times[prev]))
+            start = i
+            prev = i
+        runs.append((times[start], times[prev]))
+        parts = [f"[{s:.2f},{e:.2f}]" for s, e in runs[:max_show]]
+        if len(runs) > max_show:
+            parts.append("...")
+        return ", ".join(parts)
+
+    velocity_cbf = trace.safety.get("velocity_cbf", {}) if hasattr(trace, "safety") else {}
+    if velocity_cbf:
+        print(f"  Velocity CBF active    : {_mask_intervals(t, velocity_cbf.get('active', []))}")
+        if "window_active" in velocity_cbf:
+            print(f"  Velocity windows       : {_mask_intervals(t, velocity_cbf.get('window_active', []))}")
+    orientation_hocbf = trace.safety.get("orientation_hocbf", {}) if hasattr(trace, "safety") else {}
+    if orientation_hocbf:
+        print(f"  Orientation HOCBF      : {_mask_intervals(t, orientation_hocbf.get('active', []))}")
+    angular_velocity_cbf = trace.safety.get("angular_velocity_cbf", {}) if hasattr(trace, "safety") else {}
+    if angular_velocity_cbf:
+        print(f"  AngVel CBF active      : {_mask_intervals(t, angular_velocity_cbf.get('active', []))}")
+
     sep = "=" * 50
     print(f"\n{sep} EXP 1b DIAGNOSTICS {sep}")
     print(f"  Horizon                : {HORIZON} s  (short — comfort violation expected)")
@@ -136,6 +189,15 @@ def print_diagnostics(trace, best_cost):
     print(f"  --- Human Body (HARD {HUMAN_GEOMETRY}, r={HUMAN_BODY_RAD:.2f} m) ---")
     print(f"  Min clearance (body)   : {body_cm:+.1f} cm  (must be > 0)")
     print(f"  Pts inside body        : {n_in_body}  (must be 0)")
+    if obstacle_hocbf:
+        print(
+            f"  Obstacle HOCBF         : active_steps={obs_active_steps}, "
+            f"min_h={obs_h_min}, min_hdot={obs_hdot_min}"
+        )
+        print(f"  Obstacle HOCBF on      : {_mask_intervals(t, obstacle_hocbf.get('active', []))}")
+    if proj:
+        print(f"  Projection active      : steps={proj_active_steps}")
+        print(f"  Projection windows     : {_mask_intervals(t, proj.get('active', []))}")
     print(f"  --- Comfort Zone (SOFT w=4, r={HUMAN_COMFORT_RAD:.2f} m) ---")
     print(f"  Min clearance (comfort): {comfort_cm:+.1f} cm  (negative = violated, expected here)")
     print(f"  Pts inside comfort     : {n_in_comfort}  (soft — violation allowed)")
@@ -463,6 +525,59 @@ def plot_kinematics(trace, best_cost, base="exp1b_kinematics"):
     plt.close()
 
 
+# =====================================================================
+#  PLOT 6 — obstacle HOCBF diagnostics
+# =====================================================================
+def plot_obstacle_hocbf(trace, best_cost, base="exp1b_obstacle_hocbf"):
+    ob = trace.safety.get("obstacle_hocbf", {}) if hasattr(trace, "safety") else {}
+    if not ob:
+        print("No obstacle HOCBF data — skipping.")
+        return
+    t = trace.time
+    h = np.asarray(ob.get("h", []), dtype=float)
+    hdot = np.asarray(ob.get("hdot", []), dtype=float)
+    active = np.asarray(ob.get("active", []), dtype=bool)
+    proj = trace.safety.get("obstacle_projection", {}) if hasattr(trace, "safety") else {}
+    proj_active = np.asarray(proj.get("active", []), dtype=bool)
+
+    fig, axes = plt.subplots(2, 1, figsize=(10, 7), sharex=True)
+    ax0, ax1 = axes
+
+    ax0.plot(t, h, color="#4C72B0", lw=2.0, label=r"$h(x)$")
+    ax0.axhline(0.0, color="#CC4444", ls=":", lw=1.0, alpha=0.80,
+                label=r"$h=0$ (boundary)")
+    ax0.set_ylabel("$h(x)$", fontsize=11)
+    ax0.set_title("Obstacle HOCBF diagnostics", fontsize=11)
+    ax0.grid(True, alpha=0.25)
+
+    ax1.plot(t, hdot, color="#DD8452", lw=1.8, label=r"$\dot h$")
+    ax1.axhline(0.0, color="#999999", ls="-", lw=0.5, alpha=0.30)
+    hdot_lo = float(np.nanmin(hdot)) if hdot.size and np.any(np.isfinite(hdot)) else -1.0
+    hdot_hi = float(np.nanmax(hdot)) if hdot.size and np.any(np.isfinite(hdot)) else 1.0
+    if len(active) == len(t) and np.any(active):
+        ax1.fill_between(t, hdot_lo, hdot_hi,
+                         where=active, color="#AAAAAA", alpha=0.18,
+                         label="HOCBF active")
+    if len(proj_active) == len(t) and np.any(proj_active):
+        ax1.fill_between(t, hdot_lo, hdot_hi,
+                         where=proj_active, color="#7F7F7F", alpha=0.18,
+                         label="Projection active")
+    ax1.set_ylabel(r"$\dot h$", fontsize=11)
+    ax1.set_xlabel("Time (s)", fontsize=11)
+    ax1.set_xlim(0, HORIZON)
+    ax1.grid(True, alpha=0.25)
+
+    for ax in axes:
+        ax.legend(fontsize=9, loc="upper left", bbox_to_anchor=(1.01, 1.0),
+                  framealpha=0.9, edgecolor="lightgrey", fancybox=False)
+
+    fig.subplots_adjust(right=0.78)
+    plt.tight_layout()
+    plt.savefig(f"{base}.png", dpi=300, bbox_inches="tight", facecolor="white")
+    print(f"Saved: {base}.png")
+    plt.close()
+
+
 # ======================================================================
 #  CSV export
 # ======================================================================
@@ -602,8 +717,9 @@ def main():
     plot_stiffness(trace_final, best_cost)
     plot_orientation_euler(trace_final, best_cost)
     plot_kinematics(trace_final, best_cost)
+    plot_obstacle_hocbf(trace_final, best_cost)
 
-    print("Exp 1b done — 5 plots saved as PNG.")
+    print("Exp 1b done — 6 plots saved as PNG.")
 
 
 if __name__ == "__main__":

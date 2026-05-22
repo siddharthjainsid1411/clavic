@@ -55,6 +55,7 @@
       "modality": "HARD",
       "hard_strength": 0.2,
       "hard_infl_factor": 3.0,
+      "projector_enabled": false,
       "_comment": "Geometric guarantee: DMP repulsion + radial projector"
     },
     {

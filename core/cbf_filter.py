@@ -43,8 +43,8 @@ class OrientationHOCBFConfig:
 
     q_ref: np.ndarray
     max_angle_rad: float
-    alpha1: float = 8.0
-    alpha2: float = 8.0
+    alpha1: float = 7.0
+    alpha2: float = 7.0
     t_start: float = -np.inf
     t_end: float = np.inf
     enabled: bool = True

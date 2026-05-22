@@ -267,6 +267,7 @@ class MultiPhaseCertifiedPolicy:
             "hocbf_alpha1": float  (optional)  — obstacle HOCBF alpha1 (default 8.0)
             "hocbf_alpha2": float  (optional)  — obstacle HOCBF alpha2 (default 8.0)
             "hocbf_eps"   : float  (optional)  — radius inflation epsilon (default 0.02)
+            "projector_enabled" : bool (optional) — enable hard projector (default True)
 
         Backward-compatible alias (deprecated — prefer "avoidance"):
             "hard"        : bool   (optional)  — True → "HARD", False → "SOFT".
@@ -320,7 +321,11 @@ class MultiPhaseCertifiedPolicy:
 
         # ── Hard projector: only for HARD obstacles ─────────────────────
         hard_obs = [obs for obs in obstacles if _mode(obs) == "HARD"]
-        self._projector = ObstacleProjector(hard_obs)
+        proj_obs = [
+            obs for obs in hard_obs
+            if obs.get("projector_enabled", True)
+        ]
+        self._projector = ObstacleProjector(proj_obs)
 
         # ── DMP repulsive forcing: HARD and SOFT obstacles only.
         # NONE obstacles get neither projector nor repulsion — raw behavior.
@@ -408,6 +413,7 @@ class MultiPhaseCertifiedPolicy:
         all_omega = []      # angular velocity trajectories
         all_velocity_cbf = []
         all_obstacle_hocbf = []
+        all_repulsive_force = []
         all_orientation_hocbf = []
         all_angular_velocity_cbf = []
 
@@ -472,6 +478,7 @@ class MultiPhaseCertifiedPolicy:
             D     = plan["D"]
             velocity_cbf = plan.get("safety", {}).get("velocity_cbf", None)
             obstacle_hocbf = plan.get("safety", {}).get("obstacle_hocbf", None)
+            repulsive_force = plan.get("safety", {}).get("repulsive_force", None)
             prev_vel_end = yd[-1].copy()
 
             # Pass final Q of this phase as initial Q of next phase → no jerk at boundary
@@ -538,6 +545,11 @@ class MultiPhaseCertifiedPolicy:
                         key: (val[1:] if isinstance(val, np.ndarray) else val)
                         for key, val in obstacle_hocbf.items()
                     }
+                if repulsive_force is not None:
+                    repulsive_force = {
+                        key: (val[1:] if isinstance(val, np.ndarray) else val)
+                        for key, val in repulsive_force.items()
+                    }
                 if q_des is not None:
                     q_des = q_des[1:]
                     omega = omega[1:]
@@ -563,6 +575,8 @@ class MultiPhaseCertifiedPolicy:
                 all_velocity_cbf.append(velocity_cbf)
             if obstacle_hocbf is not None:
                 all_obstacle_hocbf.append(obstacle_hocbf)
+            if repulsive_force is not None:
+                all_repulsive_force.append(repulsive_force)
             if q_des is not None:
                 all_quat.append(q_des)
                 all_omega.append(omega)
@@ -645,6 +659,15 @@ class MultiPhaseCertifiedPolicy:
             ob["enabled"] = any(bool(part.get("enabled", False))
                                  for part in all_obstacle_hocbf)
             safety["obstacle_hocbf"] = ob
+
+        if all_repulsive_force:
+            keys = ("active", "norm")
+            rf = {}
+            for key in keys:
+                rf[key] = np.concatenate([part[key] for part in all_repulsive_force])
+            rf["enabled"] = any(bool(part.get("enabled", False))
+                                 for part in all_repulsive_force)
+            safety["repulsive_force"] = rf
 
         safety["obstacle_projection"] = {
             "active": proj_active,

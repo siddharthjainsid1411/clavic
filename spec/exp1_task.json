@@ -46,7 +46,7 @@
     {
       "type": "eventually",
       "predicate": "AtGoal",
-      "weight": 10.0,
+      "weight": 30.0,
       "modality": "SOFT"
     },
     {
@@ -54,14 +54,15 @@
       "predicate": "HumanBodyExclusion",
       "weight": 20.0,
       "modality": "HARD",
-      "hard_strength": 0.2,
+      "hard_strength": 0.4,
       "hard_infl_factor": 3.0,
+      "projector_enabled": false,
       "_comment": "Geometric guarantee: DMP repulsion + radial projector"
     },
     {
       "type": "always",
       "predicate": "HumanComfortDistance",
-      "weight": 15.0,
+      "weight": 10.0,
       "modality": "SOFT",
       "_comment": "Soft comfort zone \u2014 strong optimizer cost, no geometric enforcement"
     },

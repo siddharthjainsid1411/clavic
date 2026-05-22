@@ -129,6 +129,7 @@ def load_taskspec_from_json(path):
                         "avoidance":   "HARD",
                         "strength":    float(c.get("hard_strength",    0.05)),
                         "infl_factor": float(c.get("hard_infl_factor", 2.5)),
+                        "projector_enabled": bool(c.get("projector_enabled", True)),
                     }
                     hard_obstacle_specs.append(hard_obstacle)
                     # Keep predicate cost geometry consistent with hard layers.

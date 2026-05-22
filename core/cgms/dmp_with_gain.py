@@ -170,6 +170,8 @@ class DMPWithGainScheduling:
         cbf_speed = np.zeros(T)
         cbf_vmax_active = np.full(T, np.nan)
         cbf_window_active = np.zeros(T, dtype=bool)
+        repulsive_active = np.zeros(T, dtype=bool)
+        repulsive_norm = np.zeros(T)
         obs_h = np.full(T, np.nan)
         obs_hdot = np.full(T, np.nan)
         obs_active = np.zeros(T, dtype=bool)
@@ -194,6 +196,7 @@ class DMPWithGainScheduling:
             # This steers the spring-damper ODE organically — the goal attractor
             # remains active and the path routes AROUND the obstacle.
             # The K=Q^T Q Cholesky ODE runs AFTER this position loop — untouched.
+            repulsive_accel = np.zeros(3)
             for obs in self.repulsive_obstacles:
                 r    = obs["radius"]
                 r_infl = obs["r_infl"]
@@ -204,29 +207,32 @@ class DMPWithGainScheduling:
                     dist = float(np.linalg.norm(diff))
                     if dist < 1e-9:
                         # Degenerate: exactly at centre — push in +X+Y direction
-                        net_accel += obs["strength"] * np.array([1.0, 1.0, 0.0]) / np.sqrt(2.0)
+                        repulsive_accel += obs["strength"] * np.array([1.0, 1.0, 0.0]) / np.sqrt(2.0)
                     elif dist < r_infl:
                         n      = diff / dist                          # outward unit normal
                         # Smooth cubic taper: alpha=1 at surface (dist=r), 0 at r_infl.
                         alpha  = ((r_infl - dist) / (r_infl - r)) ** 3
                         k_dmp  = (self.d ** 2) / 4.0   # DMP spring constant
                         mag    = obs["strength"] * k_dmp * alpha
-                        net_accel += mag * n
+                        repulsive_accel += mag * n
                 elif geometry == "cylinder_infinite":
                     diff_xy = y[:2] - obs["center"][:2]
                     dist_xy = float(np.linalg.norm(diff_xy))
                     if dist_xy < 1e-9:
                         n = np.array([1.0, 1.0, 0.0]) / np.sqrt(2.0)
-                        net_accel += obs["strength"] * n
+                        repulsive_accel += obs["strength"] * n
                     elif dist_xy < r_infl:
                         nxy    = diff_xy / dist_xy
                         n      = np.array([nxy[0], nxy[1], 0.0])
                         alpha  = ((r_infl - dist_xy) / (r_infl - r)) ** 3
                         k_dmp  = (self.d ** 2) / 4.0
                         mag    = obs["strength"] * k_dmp * alpha
-                        net_accel += mag * n
+                        repulsive_accel += mag * n
                 else:
                     raise ValueError(f"Unsupported obstacle geometry: {geometry}")
+
+            if np.any(repulsive_accel != 0.0):
+                net_accel += repulsive_accel
 
             obs_min_h = np.nan
             obs_min_hdot = np.nan
@@ -255,14 +261,19 @@ class DMPWithGainScheduling:
                 "correction_norm": obs_corr,
                 "enabled": obs_enabled,
             }
-            return net_accel, diag, obs_summary
+            repulsive_summary = {
+                "active": bool(np.linalg.norm(repulsive_accel) > 0.0),
+                "norm": float(np.linalg.norm(repulsive_accel)),
+                "enabled": bool(self.repulsive_obstacles),
+            }
+            return net_accel, diag, obs_summary, repulsive_summary
 
         for k in range(T-1):
             t0 = ts[k]; h = ts[k+1] - ts[k]
-            k1y = yd[k];               k1v, diag, obs_diag = dmp(t0,            y[k],                    yd[k])
-            k2y = yd[k] + 0.5*h*k1v;   k2v, _, _           = dmp(t0 + 0.5*h,    y[k] + 0.5*h*k1y,        yd[k] + 0.5*h*k1v)
-            k3y = yd[k] + 0.5*h*k2v;   k3v, _, _           = dmp(t0 + 0.5*h,    y[k] + 0.5*h*k2y,        yd[k] + 0.5*h*k2v)
-            k4y = yd[k] + 1.0*h*k3v;   k4v, _, _           = dmp(t0 + 1.0*h,    y[k] + 1.0*h*k3y,        yd[k] + h*k3v)
+            k1y = yd[k];               k1v, diag, obs_diag, rep_diag = dmp(t0,            y[k],                    yd[k])
+            k2y = yd[k] + 0.5*h*k1v;   k2v, _, _, _                   = dmp(t0 + 0.5*h,    y[k] + 0.5*h*k1y,        yd[k] + 0.5*h*k1v)
+            k3y = yd[k] + 0.5*h*k2v;   k3v, _, _, _                   = dmp(t0 + 0.5*h,    y[k] + 0.5*h*k2y,        yd[k] + 0.5*h*k2v)
+            k4y = yd[k] + 1.0*h*k3v;   k4v, _, _, _                   = dmp(t0 + 1.0*h,    y[k] + 1.0*h*k3y,        yd[k] + h*k3v)
             y[k+1]  = y[k]  + (h/6.0)*(k1y + 2*k2y + 2*k3y + k4y)
             yd[k+1] = yd[k] + (h/6.0)*(k1v + 2*k2v + 2*k3v + k4v)
             ydd[k]  = k1v
@@ -281,7 +292,9 @@ class DMPWithGainScheduling:
             obs_hdot[k] = obs_diag["hdot"]
             obs_active[k] = obs_diag["active"]
             obs_correction[k] = obs_diag["correction_norm"]
-        ydd[-1], diag, obs_diag = dmp(ts[-1], y[-1], yd[-1])
+            repulsive_active[k] = rep_diag["active"]
+            repulsive_norm[k] = rep_diag["norm"]
+        ydd[-1], diag, obs_diag, rep_diag = dmp(ts[-1], y[-1], yd[-1])
         cbf_h[-1] = diag["h"]
         cbf_lhs[-1] = diag["cbf_lhs"]
         cbf_rhs[-1] = diag["cbf_rhs"]
@@ -297,6 +310,8 @@ class DMPWithGainScheduling:
         obs_hdot[-1] = obs_diag["hdot"]
         obs_active[-1] = obs_diag["active"]
         obs_correction[-1] = obs_diag["correction_norm"]
+        repulsive_active[-1] = rep_diag["active"]
+        repulsive_norm[-1] = rep_diag["norm"]
 
         x    = self.ds.time_system(ts)
         xdot = -np.ones_like(x) / self.tau
@@ -366,6 +381,11 @@ class DMPWithGainScheduling:
                     "hdot": obs_hdot,
                     "active": obs_active,
                     "correction_norm": obs_correction,
+                },
+                "repulsive_force": {
+                    "enabled": bool(self.repulsive_obstacles),
+                    "active": repulsive_active,
+                    "norm": repulsive_norm,
                 },
             },
         }
