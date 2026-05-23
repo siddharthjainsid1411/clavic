@@ -1,0 +1,1133 @@
+#Below is last updated project report overleaf code ang sometimes possible might not be fully 
+updated with recent work we did, so be carefull and keep this mind while referring 
+this document. And below document consit of mutiple component of whole project in
+latex that have diff document compiled under main.tex
+
+
+#Document start Below
+----------------------------------------------------------------------------------------------
+#main.tex
+%\documentclass[letter]{IEEEtran}
+\documentclass[letterpaper, 10 pt, conference]{ieeeconf}
+%\documentclass[letterpaper, 10pt, journal, twoside]{IEEEtran}      % Use this line for a4
+                                                          % paper
+
+\IEEEoverridecommandlockouts                              % This command is only
+                                                          % needed if you want to
+                                                          % use the \thanks command
+\overrideIEEEmargins
+
+
+% Paper headers
+%\markboth{IEEE Robotics and Automation Letters. Preprint Version.}
+%{Author \MakeLowercase{\textit{et al.}}: Title}
+% Use only for final RAL version
+
+% The preceding line is only needed to identify funding in the first footnote. If that is unneeded, please comment it out.
+\usepackage{cite}
+\usepackage{amsmath,amssymb,amsfonts}
+\usepackage{algorithmic}
+\usepackage[ruled,vlined,linesnumbered]{algorithm2e}
+\usepackage{graphicx}
+\usepackage{textcomp}
+\usepackage{xcolor}
+\newcommand{\safe}[1]{\textcolor{orange}{#1}}\usepackage{todonotes}
+\usepackage{nicefrac}
+\usepackage{comment}
+\usepackage{wrapfig}
+\usepackage{multirow}
+\usepackage{makecell}
+\usepackage{subfig}
+\usepackage[outercaption]{sidecap}
+\usepackage{caption}
+\usepackage{bm,times}
+\usepackage{marginnote}
+\usepackage{dblfloatfix}
+\usepackage{booktabs}
+\usepackage{cuted}
+\captionsetup[SCfigure]{name=Fig.}
+% \usepackage{subcaption}
+% Symbols: ✓ ✗ and a proper warning triangle with !
+\usepackage{pifont}
+\newcommand{\cmark}{\ding{51}}
+\newcommand{\xmark}{\ding{55}}
+% Requires the 'fourier' fonts installed; no need to \usepackage{fourier}
+\newcommand{\warn}{{\fontencoding{U}\fontfamily{futs}\selectfont\char49\relax}}
+\usepackage{siunitx}
+\usepackage{url}
+\sisetup{per-mode = symbol}
+\def\BibTeX{{\rm B\kern-.05em{\sc i\kern-.025em b}\kern-.08em
+    T\kern-.1667em\lower.7ex\hbox{E}\kern-.125emX}}
+\begin{document}
+
+\title{\LARGE \bf  Certified Policy Synthesis from Language for Safe and Semantically-Constrained Robot Manipulation
+ \\
+% \author{Giovanni Franzese$^{*\dagger}$, Anna M\'esz\'aros$^\dagger$, Luka Peternel, and Jens Kober}
+%{\footnotesize \textsuperscript{*}Note: Sub-titles are not captured in Xplore and should not be used}
+% \thanks{This research is funded by ARTPARK, DRDO.}
+% \thanks{The authors are with Human-interactive Robotics Lab, Cyber Physical Systems(e-mail: ravipr@iisc.ac.in).}
+% \thanks{$^*$Corresponding Author $^\dagger$These authors contributed equally to this work.} 
+%\thanks{This work has been submitted to the IEEE for possible publication. Copyright may be transferred without notice, after which this version may no longer be accessible}
+% \thanks{1. \textbf{This work has been submitted to the IEEE for possible publication. Copyright may be transferred without notice, after which this version may no longer be accessible.}}
+%\thanks{Identify applicable funding agency here. If none, delete this.}
+}
+\maketitle
+
+\maketitle
+\thispagestyle{empty}
+\pagestyle{empty}
+
+\begin{strip}
+    \centering
+    \includegraphics[width=\linewidth]{Shreyas/images/traj-adaptation-framework.png}
+    \captionof{figure}{A structured scene summary containing entity poses and semantic labels is provided to both the language parser and the deterministic compiler. The language parser uses this information to generate symbolic bindings between predicates and scene entities, while the compiler uses the same information to ground the specification into numerical constraints and cost terms.}
+    \label{fig:framework}
+\end{strip}
+
+ \input{IROS/abstract}
+
+
+\input{IROS/intro}
+\input{IROS/related}
+\input{IROS/prelim}
+\input{IROS/method}
+% \input{IROS/exp}
+\input{IROS/exp-sid}
+
+\input{IROS/conclusion_sid}
+\input{IROS/appendix_sid}
+\bibliographystyle{IEEEtran}
+\bibliography{IROS/references}
+
+\end{document}
+\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\
+
+#abstract
+
+
+\begin{abstract}
+
+Robotic manipulation in human environments requires satisfying geometric safety constraints together with high-level semantic requirements involving temporal ordering, timing, and object-dependent motion preferences expressed in natural language. We present a framework for certified policy synthesis from language-conditioned task specifications. Natural language instructions are translated into a typed semantic representation expressed in weighted temporal logic over a structured predicate library. A deterministic compiler converts this specification into typed constraints that separate safety-critical requirements from task objectives and user preferences. Hard physical constraints are enforced by construction through a feasible policy manifold that guarantees collision avoidance, actuator feasibility, and impedance stability. Semantic task objectives are optimized using a temporal-logic robustness metric, enabling principled trade-offs between competing preferences while preserving hard guarantees. The resulting optimization synthesizes full six-degree-of-freedom trajectories together with time-varying impedance schedules. Hardware experiments demonstrate language-driven semantic reasoning, timing adaptation, and physically consistent manipulation behaviors under certified safety constraints.
+
+\end{abstract}
+
+
+#intro
+% \begin{table*}[!t]
+% \centering
+% \captionsetup{font=scriptsize}
+% \renewcommand{\arraystretch}{1.25}
+% \begin{tabular}{
+% | >{\centering\arraybackslash} m{3.2cm}
+% | >{\centering\arraybackslash} m{1.7cm}
+% | >{\centering\arraybackslash} m{1.7cm}
+% | >{\centering\arraybackslash} m{1.8cm}
+% | >{\centering\arraybackslash} m{1.8cm}
+% | >{\centering\arraybackslash} m{1.8cm}
+% | >{\centering\arraybackslash} m{1.7cm}|
+% }
+% \hline
+% \textbf{Method Family} &
+% \textbf{Language-conditioned Tasks} &
+% \textbf{Temporal Logic / Semantic Spec} &
+% \textbf{Certified Safety Guarantees} &
+% \textbf{Trajectory Optimization} &
+% \textbf{Impedance / Interaction Control} &
+% \textbf{Language → Semantic Compilation} \\
+% \hline
+
+% Early language grounding
+% \cite{tellex2011understanding,misra2016tell} &
+% \cmark &
+% \xmark &
+% \xmark &
+% \xmark &
+% \xmark &
+% \xmark \\
+% \hline
+
+% LLM planning systems
+% (SayCan, PaLM-E, VoxPoser)
+% \cite{saycan2022,palme2023,huang2023voxposer} &
+% \cmark &
+% \xmark &
+% \xwarn &
+% \xwarn &
+% \xmark &
+% \xwarn \\
+% \hline
+
+% Vision-language-action models
+% (RT-1 / RT-2)
+% \cite{brohan2022rt1,brohan2023rt2} &
+% \cmark &
+% \xmark &
+% \xmark &
+% \xmark &
+% \xmark &
+% \xmark \\
+% \hline
+
+% Temporal logic motion planning
+% \cite{kress2009temporal,raman2015reactive} &
+% \xmark &
+% \cmark &
+% \xwarn &
+% \cmark &
+% \xmark &
+% \xmark \\
+% \hline
+
+% STL / TLTL trajectory optimization
+% \cite{donze2010robust,mehdipour2019arithmetic} &
+% \xmark &
+% \cmark &
+% \xwarn &
+% \cmark &
+% \xmark &
+% \xmark \\
+% \hline
+
+% wTLTL + motion primitive optimization
+% \cite{wTLTL} &
+% \xmark &
+% \cmark &
+% \xwarn &
+% \cmark &
+% \xmark &
+% \xmark \\
+% \hline
+
+% Semantic safety trajectory optimization
+% \cite{brunke2025semantically} &
+% \xmark &
+% \warn &
+% \warn &
+% \cmark &
+% \xmark &
+% \xmark \\
+% \hline
+
+% Impedance / interaction control
+% \cite{hogan1985impedance,albu2007unified} &
+% \xmark &
+% \xmark &
+% \warn &
+% \xwarn &
+% \cmark &
+% \xmark \\
+% \hline
+
+% \textbf{Proposed framework} &
+% \cmark &
+% \cmark &
+% \cmark &
+% \cmark &
+% \cmark &
+% \cmark \\
+% \hline
+
+% \end{tabular}
+% \caption{
+% Comparison of approaches for language-conditioned manipulation and safe control. 
+% Existing language-driven systems enable natural task specification but typically rely on downstream planners without certified safety guarantees. 
+% Temporal logic methods provide structured task specifications but assume manually defined formulas and do not synthesize interaction-aware control policies. 
+% Safety-aware control approaches enforce constraints during optimization but lack semantic task generation from language. 
+% The proposed framework unifies these capabilities by compiling natural language instructions into typed temporal logic specifications and performing certified policy search that jointly synthesizes trajectories and impedance policies.
+% }
+% \label{tab:method_comparison}
+% \end{table*}
+% \begin{table*}[!t]
+% \centering
+% \captionsetup{font=scriptsize}
+% \renewcommand{\arraystretch}{1.25}
+% \begin{tabular}{
+% | >{\centering\arraybackslash} m{3.2cm}
+% | >{\centering\arraybackslash} m{2.0cm}
+% | >{\centering\arraybackslash} m{2.0cm}
+% | >{\centering\arraybackslash} m{2.0cm}
+% | >{\centering\arraybackslash} m{2.0cm}
+% | >{\centering\arraybackslash} m{2.0cm}|
+% }
+% \hline
+% \textbf{Method Family} &
+% \textbf{Language Task Input} &
+% \textbf{Temporal Logic Preferences} &
+% \textbf{Certified Safety} &
+% \textbf{Trajectory Optimization} &
+% \textbf{Impedance / Interaction Control} \\
+% \hline
+
+% Language-conditioned planners
+% \cite{saycan2022,huang2023voxposer} &
+% \cmark &
+% \xmark &
+% \xmark &
+% \warn &
+% \xmark \\
+% \hline
+
+% Temporal logic motion planning
+% \cite{kress2009temporal,raman2015reactive} &
+% \xmark &
+% \cmark &
+% \warn &
+% \warn &
+% \xmark \\
+% \hline
+
+% STL / TLTL trajectory optimization
+% \cite{donze2010robust,mehdipour2019arithmetic} &
+% \xmark &
+% \cmark &
+% \warn &
+% \cmark &
+% \xmark \\
+% \hline
+
+% Temporal logic motion primitives
+% \cite{wTLTL} &
+% \xmark &
+% \cmark &
+% \warn &
+% \cmark &
+% \xmark \\
+% \hline
+
+% Semantic safety trajectory optimization
+% \cite{brunke2025semantically} &
+% \xmark &
+% \warn &
+% \warn &
+% \cmark &
+% \xmark \\
+% \hline
+
+% Variable impedance manipulation
+% \cite{hogan1985impedance,albu2007unified} &
+% \xmark &
+% \xmark &
+% \warn &
+% \xwarn &
+% \cmark \\
+% \hline
+
+% \textbf{Proposed framework} &
+% \cmark &
+% \cmark &
+% \cmark &
+% \cmark &
+% \cmark \\
+% \hline
+
+% \end{tabular}
+% \caption{
+% Comparison of approaches for language-conditioned manipulation and safety-aware control. 
+% Existing language-driven systems enable flexible task specification but typically rely on downstream planners without formal safety guarantees. 
+% Temporal logic methods provide structured preference encoding but assume manually defined specifications and fixed control structures. 
+% Safety-aware trajectory optimization enforces constraints during planning but lacks semantic task generation from language and interaction-aware control synthesis. 
+% The proposed framework integrates language-conditioned semantic specification, temporal logic preference encoding, and certified policy search to jointly synthesize safe manipulation trajectories and impedance policies. 
+% Symbols indicate capability support: $\checkmark$ supported, $\triangle$ partially supported, $\times$ not supported.
+% }
+% \label{tab:method_comparison}
+% \end{table*}
+\section{INTRODUCTION}
+Robotic manipulation in human environments requires satisfying both low-level physical constraints and high-level semantic task requirements. In addition to avoiding collisions and respecting actuator limits, robots must interpret instructions involving object relationships, temporal ordering, and context-dependent motion preferences. For example, a command such as \emph{``place the cup on the table while keeping it upright and avoiding the laptop''} simultaneously specifies geometric safety conditions, temporal sequencing, and object-dependent behavioral constraints.
+
+Recent advances in language models have enabled natural language interfaces for robot task specification. However, directly executing language-derived commands remains challenging. Language models may generate ambiguous or inconsistent instructions, and most existing approaches rely on heuristic planners or learned policies that provide limited guarantees on safety and controller stability. In safety-critical environments, such as human-robot collaboration or assistive manipulation, it is essential that task interpretation does not compromise the physical guarantees required for safe execution.
+
+Another challenge arises from the disconnect between high-level task semantics and low-level robot control. Many language-conditioned manipulation frameworks focus primarily on discrete task planning or motion generation, while assuming fixed control policies during execution. In practice, physical interaction tasks often require adaptive control behaviors, such as adjusting stiffness or compliance depending on task context or proximity to humans.
+
+To address these challenges, we propose a framework for \emph{certified policy search in semantic task space}. The key idea is to compile language-derived task descriptions into a structured semantic representation that guides the synthesis of manipulation policies while preserving strict guarantees on safety and controller stability. Natural language instructions are translated into weighted temporal logic specifications using a large language model. A deterministic compiler then validates the specification and generates typed constraints that distinguish between safety-critical requirements, task completion conditions, and user preferences.
+
+Rather than directly optimizing trajectories under explicit constraints, the proposed method performs policy search over a certified policy manifold. The policy parameterization ensures that sampled policies satisfy geometric safety conditions and impedance stability constraints by construction. Policy search is then used to optimize semantic task satisfaction through a temporal logic robustness objective.
+
+The resulting framework enables robots to synthesize manipulation behaviors that combine high-level semantic reasoning with certified physical execution.
+
+\paragraph{Contributions}
+
+This paper makes the following contributions:
+
+\begin{itemize}
+
+\item We introduce a framework for \emph{certified policy search in semantic task space}, enabling language-conditioned manipulation policies that guarantee satisfaction of safety-critical physical constraints.
+
+\item We propose a \emph{language-to-semantics compilation pipeline} that converts natural language task descriptions into typed temporal logic specifications while separating semantic interpretation from safety-critical execution.
+
+\item We develop a \emph{certified policy parameterization} that jointly synthesizes six-degree-of-freedom trajectories and time-varying impedance schedules while guaranteeing geometric safety and controller stability.
+
+\item We demonstrate the proposed framework through hardware experiments showing language-driven semantic reasoning, timing adaptation, and physically consistent manipulation behaviors.
+
+\end{itemize}
+
+
+
+#related work
+\section{Related Work}
+
+\subsection{Language-conditioned robot planning}
+
+Recent work has explored grounding natural language instructions into executable robot behaviors. Early approaches translated language into symbolic task plans or motion primitives \cite{tellex2011understanding,misra2016tell,bollini2013interpreting}. More recent systems leverage large language models to generate robot policies, programmatic planners, or skill compositions \cite{ahn2022do,saycan2022,palme2023,liang2022code,brohan2023rt2,brohan2022rt1,huang2023voxposer}. These approaches significantly improve the accessibility of robotic systems by enabling compositional task specification through language. However, most existing language-conditioned frameworks primarily focus on task interpretation and planning, while relying on downstream controllers or motion planners that provide limited guarantees on physical safety or controller stability.
+
+In contrast, our approach treats language as a semantic front-end that generates structured task specifications. These specifications are compiled into typed constraints and optimized over a certified policy manifold, enabling language-driven task execution while preserving hard guarantees on geometric safety and control feasibility.
+
+\subsection{Temporal logic for robotic task specification}
+
+Temporal logic has emerged as a powerful formalism for specifying sequential and safety-critical robot behaviors. Early work demonstrated reactive mission and motion planning using temporal logic specifications \cite{kress2009temporal}. Subsequent research has explored synthesis of controllers from temporal logic formulas and runtime monitoring of temporal constraints \cite{raman2015reactive,belta2017formal,menghi2021rtamt}. Quantitative robustness metrics for signal temporal logic further enable optimization-based approaches for satisfying temporal specifications \cite{donze2010robust,mehdipour2019arithmetic}.
+
+Our work builds on this line of research but introduces two key extensions. First, temporal logic specifications are automatically generated from natural language instructions through typed semantic compilation. Second, temporal robustness is optimized jointly with manipulation trajectory and impedance policies, enabling semantic task reasoning that is directly coupled to physically consistent robot control. Recent work has also explored integrating temporal logic specifications with motion primitive optimization. For example, temporal logic guided motion primitives combine signal temporal logic robustness with policy search to optimize manipulation trajectories under user-defined logical preferences \cite{wTLTL}. Our work differs in two important ways. First, the temporal logic specification is not manually designed but automatically generated from natural language through typed semantic compilation. Second, the optimization is performed over a certified policy manifold that jointly synthesizes trajectories and impedance schedules while guaranteeing safety and controller stability.
+
+\subsection{Safe motion generation and control}
+
+Safety in robotic manipulation has been widely studied through constrained optimal control, control barrier functions, and safety filters \cite{ames2019control,wabersich2023safe,zanon2021safe}. These approaches enforce safety constraints during control execution and have been successfully applied to collision avoidance and dynamical feasibility. However, most safety-aware control frameworks assume fixed task objectives and do not address the problem of generating manipulation behaviors from high-level semantic instructions.
+
+Safety in robotic manipulation has been widely studied through constrained optimal control, control barrier functions, and safety filters \cite{ames2019control,wabersich2023safe,zanon2021safe}. These approaches enforce safety constraints during control execution and have been successfully applied to collision avoidance and dynamical feasibility. However, most safety-aware control frameworks assume fixed task objectives and do not address the problem of synthesizing manipulation behaviors from semantic task descriptions.
+
+Recent work has explored semantic safety formulations \cite{brunke2025semantically} that integrate high-level task constraints with trajectory optimization. These approaches encode semantic safety predicates and enforce them through constrained optimization or penalty-based objectives during trajectory generation. While effective, such formulations typically rely on explicit constraint handling during optimization and assume manually specified task objectives. As a result, intermediate policy samples may violate safety constraints during exploration.
+
+In contrast, our approach enforces safety and control feasibility through a certified policy parameterization that restricts optimization to a feasible policy manifold. This guarantees geometric safety and impedance stability by construction, rather than through constraint penalties. Furthermore, the semantic task specification is generated automatically from natural language and optimized jointly with trajectory and impedance policies.
+
+\subsection{Impedance and variable-stiffness manipulation}
+
+Impedance control provides a principled framework for physically interactive manipulation by regulating the dynamic relationship between motion and external forces \cite{hogan1985impedance}. Extensions to variable impedance control enable robots to adapt stiffness and damping properties depending on task context \cite{albu2007unified}. Learning-based approaches further improve adaptability by learning impedance behaviors from demonstrations or interaction data \cite{calinon2010learning,khansari2014learning}. However, integrating impedance adaptation with high-level semantic reasoning remains challenging.
+
+Our formulation explicitly co-optimizes reference trajectories and time-varying impedance schedules under certified stability constraints. This coupling enables semantic task requirements derived from language instructions to directly influence the physical interaction behavior of the robot.
+
+\subsection{Language models for robotic control}
+
+Foundation models are increasingly used to generate robot policies, programs, or high-level plans from multimodal inputs. This ecosystem includes SayCan for affordance-grounded language planning \cite{saycan2022}, PaLM-E for embodied multimodal reasoning \cite{palme2023}, RT-1 and RT-2 for large-scale vision-language-action policy learning \cite{brohan2022rt1,brohan2023rt2}, and VoxPoser for language-conditioned 3D value-map planning \cite{huang2023voxposer}. Related manipulation systems such as CLIPort and VIMA further illustrate strong progress in language/vision-conditioned skill execution and generalization \cite{shu2021cliport,jiang2022vima}. While these methods improve generalization and task diversity, they often rely on downstream planning or control modules that lack formal safety guarantees.
+
+Our approach adopts a complementary perspective: language models are used only for semantic interpretation, while task execution is performed through a deterministic compilation and certified policy synthesis pipeline. This separation enables expressive language interfaces while maintaining rigorous guarantees on safety and controller stability.
+
+
+#method
+\section{Method}
+
+\subsection{System Overview}
+
+We propose a framework for certified policy search in semantic task space. 
+The objective is to synthesize manipulation policies directly from language-conditioned task specifications while guaranteeing physical safety and controller stability.
+
+The overall pipeline is illustrated in Fig.~\ref{fig:system_pipeline}. 
+Natural language instructions are first translated into a structured semantic representation using a large language model (LLM). 
+The resulting specification is validated by a deterministic compiler that performs type checking, resolves object bindings, and separates task semantics into safety-critical constraints and optimization objectives.
+
+Policy optimization is then performed over a certified parameterization that guarantees satisfaction of physical constraints by construction. 
+The manipulation policy consists of a parameterized trajectory together with a time-varying impedance schedule. 
+Policy parameters are optimized using sampling-based policy search guided by temporal logic robustness objectives derived from the semantic task specification.
+
+This separation between semantic interpretation and certified control synthesis enables language-driven manipulation while preserving strict guarantees on safety and controller stability.
+
+
+%------------------------------------------------------------------------------------
+
+
+\subsection{Language-to-Semantics Compilation}
+
+Natural language provides a flexible interface for specifying manipulation tasks in human environments. 
+However, executing language-derived instructions directly is unsafe due to ambiguity and lack of physical grounding. 
+To address this challenge, we introduce a language-to-semantics compiler that converts natural language instructions into a formally structured task specification.
+
+Given a natural language command and a structured scene description, a large language model produces an intermediate specification referred to as \texttt{TaskSpec}. 
+This specification is not executed directly. Instead, it is validated and transformed by a deterministic compiler that enforces semantic consistency and injects safety-critical constraints.
+
+User instructions are converted into a structured task specification \texttt{TaskSpec}
+\begin{equation}
+\mathcal{S}
+=
+(\varphi, w, \Lambda, \tau, \text{bindings}),
+\end{equation}
+where
+
+\begin{itemize}
+\item $\varphi$ is a weighted temporal logic formula,
+\item $w$ are logic weights,
+\item $\Lambda$ are cost weights,
+\item $\tau$ is task duration,
+\item bindings map symbolic entities to scene parameters.
+\end{itemize}
+
+A deterministic compiler validates syntax, enforces typing rules,
+and constructs both hard constraints and rollout costs.
+
+% \subsubsection{Overview}
+
+Natural language instructions were converted into a structured task specification \texttt{TaskSpec} using a large language model (LLM). The \texttt{TaskSpec} was not executed directly. Instead, a deterministic compiler (i) validated and type-checked the \texttt{TaskSpec},
+(ii) injected mandatory hard constraints, and (iii) compiled the specification into:
+% \textcolor{red}{Need to reframe the following.}
+\begin{enumerate}
+\item \emph{hard constraints} are enforced by construction (via 3 layer architecture mentioned in subsequent section)
+\item \emph{required constraints} are heavily weighted and not under LLM/user-control
+\item {user preference} is encoded using temporal-logic robustness objective 
+\item rollout costs
+\end{enumerate}
+
+
+\subsubsection{Scene summary provided to the LLM}
+
+The LLM received a structured scene summary consisting of tuples
+\begin{equation}
+\{(\text{id}_{i},\; \text{name}_{i},\; p_i,\; q_i)\}_{i=1}^{N_{\text{obj}}},
+\end{equation}
+i.e., object id, object name, position, and orientation quaternion.
+
+
+\subsubsection{Predicate library}
+
+Predicates are evaluated over rollout trace
+\begin{equation}
+\mathcal{T}
+=
+\{p(t), q(t), \dot{p}(t), \omega(t), K(t), D(t)\}.
+\end{equation}
+
+Predicate families include:
+
+\begin{align}
+\text{AtPose:} &\quad
+\|p(t)-\bar p\|\le \epsilon_p
+\wedge
+d_q(q(t),\bar q)\le \epsilon_q
+\\
+\text{InRegion:} &\quad p(t)\in \mathcal{R}
+\\
+\text{Clearance:} &\quad d(p(t))\ge d_{\min}
+\\
+\text{TiltLimit:} &\quad d_q(q(t),q_{\text{ref}})\le \theta_{\max}
+\\
+\text{RateLimit:} &\quad
+\|\dot p(t)\|\le v_{\max},
+\|\omega(t)\|\le \omega_{\max}
+\end{align}
+
+% \textcolor{red}{Impedance feasibility predicates are also included? Human-aware VIC?}
+
+\subsubsection{Temporal logic operators (wTLTL)}
+
+Task semantics were expressed using weighted truncated linear temporal logic (wTLTL) \cite{wTLTL}.
+We supported the operator set used in \cite{wTLTL}, restricted to operators required in manipulation tasks:
+Always ($\square$), Eventually ($\lozenge$), Until ($U$), Then/Sequence ($T$), and Implication ($\Rightarrow$).
+The wTLTL syntax followed \cite{wTLTL}:
+\begin{equation}
+\begin{aligned}
+\varphi :=\;& \top \mid f(y_t)<c \mid \neg\varphi \mid \bigwedge\nolimits_w \varphi_i \\
+            & \mid \bigvee\nolimits_w \psi_i
+            \mid \lozenge\varphi \mid \square\varphi \\
+            & \mid \varphi U \psi \mid \varphi T \psi \mid \varphi \Rightarrow \psi .
+\end{aligned}
+\end{equation}
+
+
+
+\subsubsection{Hard constraints and user preferences (typed enforcement)}
+
+Each predicate instance generated from the task specification is assigned an enforcement type through deterministic rules implemented in the compiler.
+
+\begin{itemize}
+
+\item \textbf{Hard constraints.}
+Safety-critical physical constraints that must never be violated. 
+Examples include collision avoidance, actuator limits, and impedance stability conditions.
+
+
+\item \textbf{Soft constraints.}
+Soft semantic objectives de-
+rived from language instructions, such as maintaining
+distance from human workspaces or avoiding motion above fragile
+objects.
+\end{itemize}
+
+Hard constraints are never controlled by the language model and are automatically injected by the compiler when required.
+
+% [NOTE: we are using 3 constraint - hard for guaranteed satisfaction, require - necessary but dont depend on user it uses slack penalization, prefer - soft constraint uses weighted penalization similar to wltl ]
+
+
+
+
+%---------------------------------------------------------------------
+
+
+
+\subsection{Motion Primitive Policy Representation}
+
+The manipulation policy generates a reference trajectory and impedance schedule parameterized by $\Theta=(\theta,\psi)$. 
+The trajectory component is represented using dynamic movement primitives (DMPs), which provide a compact parameterization of nonlinear motions while preserving stable goal-directed behavior.
+The desired reference trajectory is generated as
+\begin{equation}
+x_d(t;\theta)
+=
+\big(
+p_d(t;\theta_p),
+q_d(t;\theta_q)
+\big).
+\end{equation}
+
+\subsubsection{Canonical phase variable}
+
+Trajectory shape is separated from duration using a normalized
+phase variable
+\begin{equation}
+s = \frac{t}{\tau}.
+\end{equation}
+
+\subsubsection{Translational motion primitive}
+
+Translational trajectories are parameterized using Dynamic
+Movement Primitives (DMPs) identical to those used in
+\cite{CGMS}:
+
+\begin{align}
+\tau^2 m \ddot{p}(t)
+=
+k(g - p(t))
+-
+\tau d \dot{p}(t)
++
+\gamma(t) f_{\text{pos}}(s),
+\end{align}
+
+where $g$ is the goal position and
+$f_{\text{pos}}(s)$ is an RBF forcing term parameterized by
+$\theta_p$.
+
+\subsubsection{Orientation motion primitive in log space}
+% \textcolor{red}{Need to verify and cite this}
+Orientation dynamics are defined in the tangent space of $SO(3)$:
+
+\begin{align}
+\tau^2 m \dot{\omega}(t)
+=
+k e_g(t)
+-
+\tau d \omega(t)
++
+\gamma(t) f_{\text{ori}}(s),
+\\
+\dot{q}(t)
+=
+\frac{1}{2}\Omega(\omega(t))q(t),
+\end{align}
+
+where $\omega(t)$ is angular velocity and
+$e_g(t)$ is log-map orientation error.
+
+% ----------------------------------------------------
+
+\subsection{Garunteed Safety in Trajectory Generation}
+
+Geometric safety constraints are enforced through two complementary
+mechanisms embedded within the trajectory generation process.
+First, the motion primitive dynamics are augmented with a continuous
+repulsive force that smoothly steers trajectories away from nearby
+obstacles during integration. Second, a deterministic projection
+operator guarantees that any residual violations are mapped onto the
+boundary of the safe set.
+
+Together these mechanisms ensure smooth obstacle avoidance behavior
+while providing strict geometric safety guarantees for all generated
+rollouts.
+
+
+\subsubsection{Soft Geometric Routing via Repulsive Forcing}
+
+While the baseline dynamic movement primitives parameterize the spatial shape of the motion, relying fully on post-optimization clipping to prevent collisions results in discontinuous velocity profiles. To induce natural, smooth obstacle avoidance, we added the translational motion primitive with a continuous repulsive force injected directly into the ODE when in proximity of obstacle that needs to be avoided.
+
+We approximate environmental obstacles using convex bounding geometries. Let $c \in \mathbb{R}^3$ denote the geometric center of an obstacle with a clearance boundary $r$, and let $r_{\mathrm{infl}} > r$ define an extended spatial influence radius. We modify the translational DMP as:
+\begin{align}
+\tau^2 m \ddot{p}(t) &= -k(p(t) - g) - \tau d \dot{p}(t) \nonumber \\
+&\quad + \gamma(t) f_{\text{pos}}(s) + f_{\mathrm{rep}}(p(t)),
+\end{align}
+where $f_{\mathrm{rep}}(p)$ acts as a virtual force pushing the trajectory tangentially away from the convex boundary. 
+
+To ensure continuous second derivatives (yielding dynamically feasible, smooth accelerations) while strictly bounding the repulsive magnitude, we define a cubic taper function $\alpha: \mathbb{R}_{\ge 0} \rightarrow [0,1]$. For a distance $d_c(p) = \|p - c\|$, the taper is:
+\begin{equation}
+\alpha(d_c) = 
+\begin{cases} 
+\left( \frac{r_{\mathrm{infl}} - d_c}{r_{\mathrm{infl}} - r} \right)^3 & \text{if } d_c < r_{\mathrm{infl}}, \\
+0 & \text{otherwise}.
+\end{cases}
+\end{equation}
+The force is applied along the outward unit normal $n(p) = \frac{p - c}{\|p - c\|}$ and scaled commensurately with the nominal primitive spring constant $k$:
+\begin{equation}
+f_{\mathrm{rep}}(p) = s_{\mathrm{obs}} \, k \, \alpha(d_c(p)) \, n(p),
+\end{equation}
+where $s_{\mathrm{obs}} > 0$ determines the repulsion strength. By integrating this term inside the ODE, the policy naturally bends the generated path around convex obstacles while the goal-attractor remains continuously active.
+
+\subsubsection{Hard Geometric Safety via Convex Projection}
+
+In safety-critical tasks (such as avoiding human) require absolute, unconditional geometric guarantees that cannot afford to be violated under any sampling conditions. 
+
+To provide this hard backstop, we employ a geometric projection onto the safe set. After the modified ODE is integrated to produce the discretized trajectory points $p_k = p(t_k)$, we look for points that penetrate the obstacle's convex boundary. For a bounding geometry with center $c$ and safety radius $r$, points violating the constraint ($\|p_k - c\| < r$) are subjected to a hard radial projection as follows:
+\begin{equation}
+p'_k = c + r \frac{p_k - c}{\|p_k - c\|}.
+\end{equation}
+This operation help in mapping the unfeasible point orthogonally onto the nearest point on the surface of the convex hull providing guaranteed avoidance. 
+
+Because the repulsive forcing discussed above already bends the trajectory away from the obstacle during the integration phase, this hard projector is only used if violation detected. Consequently, this approach strictly guarantees unconditional geometric safety.
+
+
+\subsubsection{Runtime-Certified Hard Constraint Enforcement}
+To guarantee strict satisfaction of safety-critical constraints during execution, we augment the nominal semantic motion synthesis pipeline with a runtime-certified barrier-based filtering layer grounded in Control Barrier Function (CBF) and High-Order Control Barrier Function (HOCBF) theory. Unlike classical CBF-QP controllers where the optimization directly synthesizes the control policy online, the proposed framework preserves the semantic trajectory generation process through PIBB optimization and DMP-based motion synthesis, while employing barrier-based runtime filtering only as a minimally invasive correction mechanism. This separation allows the framework to retain expressive temporal-logic-driven behavior generation while enforcing forward-invariant hard constraints during rollout execution.
+
+The translational DMP dynamics are defined as
+\begin{equation}
+\tau^2 \ddot{x} = f_\theta(s)\gamma(s) + K(x-g) - D\tau \dot{x} + a_{\text{rep}},
+\label{eq:trans_dmp}
+\end{equation}
+where $x \in \mathbb{R}^3$ denotes the Cartesian end-effector position, $g$ is the target position, $K$ and $D$ are stiffness and damping matrices generated through the CGMS formulation, $f_\theta(s)$ is the learned forcing term parameterized by $\theta$, $s$ is the canonical phase variable, and $\tau$ controls temporal scaling. The rollout generates a nominal acceleration trajectory
+\begin{equation}
+a_{\text{nom}} = \ddot{x}_{\text{nom}},
+\label{eq:a_nom}
+\end{equation}
+which represents the unconstrained semantic motion policy.
+
+To enforce velocity safety, we define the admissible set
+\begin{equation}
+\mathcal{S}_v = \{v \mid \|v\| \le v_{\text{max}}\},
+\label{eq:safe_set_v}
+\end{equation}
+where $v = \dot{x}$ denotes Cartesian velocity and $v_{\text{max}}$ is the maximum allowable translational speed. A corresponding barrier function is constructed as
+\begin{equation}
+h_v(v) = v_{\text{max}}^2 - v^T v.
+\label{eq:cbf_v}
+\end{equation}
+The barrier value encodes the signed safety margin, where $h_v > 0$ corresponds to safe states, $h_v = 0$ denotes the admissible boundary, and $h_v < 0$ indicates violation of the velocity constraint. To maintain forward invariance of the safe set, the following condition is enforced:
+\begin{equation}
+\dot{h}_v + \alpha h_v \ge 0,
+\label{eq:cbf_condition_v}
+\end{equation}
+where $\alpha > 0$ controls the barrier response. Since
+\begin{equation}
+\dot{h}_v = -2v^Ta,
+\label{eq:h_dot_v}
+\end{equation}
+with $a = \ddot{x}$, the admissible acceleration set becomes
+\begin{equation}
+2v^Ta \le \alpha h_v.
+\label{eq:admissible_a}
+\end{equation}
+
+At each rollout timestep, the nominal DMP acceleration is projected onto this certified-safe admissible set through the optimization
+\begin{equation}
+a_{\text{safe}} = \arg\min_a \|a-a_{\text{nom}}\|^2
+\label{eq:qp_v}
+\end{equation}
+subject to
+\begin{equation}
+2v^Ta \le \alpha h_v.
+\end{equation}
+This filtering operation preserves the nominal semantic behavior whenever the constraint is already satisfied, while minimally modifying unsafe accelerations only when required. The filtered acceleration is subsequently integrated forward according to
+\begin{equation}
+v_{k+1} = v_k + a_{\text{safe}}\Delta t,
+\label{eq:integrate_v}
+\end{equation}
+\begin{equation}
+x_{k+1} = x_k + v_{k+1}\Delta t.
+\label{eq:integrate_x}
+\end{equation}
+Consequently, the executed trajectory evolves entirely under certified-safe dynamics, guaranteeing that
+\begin{equation}
+\|v(t)\| \le v_{\text{max}}, \quad \forall t,
+\label{eq:velocity_guarantee}
+\end{equation}
+provided that the initial condition is feasible and the barrier constraints remain solvable throughout rollout execution.
+
+For rotational safety, first-order barrier dynamics are insufficient because orientation constraints possess relative degree two with respect to the angular acceleration input. Therefore, a higher-order barrier formulation is employed. The end-effector orientation is represented using unit quaternions
+\begin{equation}
+q = [q_w,q_x,q_y,q_z],
+\label{eq:quaternion}
+\end{equation}
+with quaternion kinematics governed by
+\begin{equation}
+\dot{q} = \frac{1}{2}[0,\omega]\otimes q,
+\label{eq:quat_kinematics}
+\end{equation}
+where $\omega$ denotes angular velocity and $\otimes$ represents quaternion multiplication. Angular velocity evolves according to
+\begin{equation}
+\dot{\omega} = \beta,
+\label{eq:omega_dot}
+\end{equation}
+where $\beta$ denotes angular acceleration.
+
+To constrain orientation within an admissible cone around a reference orientation $q_{\text{ref}}$, we define the barrier function
+\begin{equation}
+h_q(q) = (q^Tq_{\text{ref}})^2 - \cos^2(\theta_{\text{max}}/2),
+\label{eq:hocbf_q}
+\end{equation}
+where $\theta_{\text{max}}$ denotes the maximum allowable angular deviation. Using quaternion geometry,
+\begin{equation}
+|q^Tq_{\text{ref}}| = \cos(\theta/2),
+\label{eq:quat_separation}
+\end{equation}
+where $\theta$ represents the angular separation between the current and reference orientations. The barrier therefore guarantees that the executed orientation remains within the admissible rotational envelope.
+
+Differentiating $h_q$ once yields dependence on angular velocity $\omega$, but not directly on the control input $\beta$. Consequently, the orientation barrier possesses relative degree two. To enforce forward invariance, the recursive higher-order barrier formulation is constructed as
+\begin{equation}
+\psi_0 = h_q,
+\label{eq:psi_0}
+\end{equation}
+\begin{equation}
+\psi_1 = \dot{h}_q + \alpha_1 h_q,
+\label{eq:psi_1}
+\end{equation}
+followed by the higher-order condition
+\begin{equation}
+\dot{\psi}_1 + \alpha_2 \psi_1 \ge 0,
+\label{eq:hocbf_condition_q}
+\end{equation}
+with positive gains $\alpha_1,\alpha_2 > 0$. Expanding the recursion yields
+\begin{equation}
+\ddot{h}_q + (\alpha_1+\alpha_2)\dot{h}_q + \alpha_1\alpha_2 h_q \ge 0,
+\label{eq:expanded_hocbf}
+\end{equation}
+which induces stable second-order safety dynamics over the orientation manifold.
+
+Similar to the translational case, the nominal angular acceleration generated by the rotational DMP is projected into the admissible certified-safe set through
+\begin{equation}
+\beta_{\text{safe}} = \arg\min_\beta \|\beta-\beta_{\text{nom}}\|^2
+\label{eq:qp_q}
+\end{equation}
+subject to the higher-order barrier constraints.
+
+The runtime-certified filtering layer operates continuously during PIBB optimization. Specifically, PIBB samples trajectory parameters $\theta_i$, each parameter sample generates a nominal DMP rollout, and the barrier-based filtering layer enforces hard constraints at every rollout timestep. The resulting certified-safe trajectory $\tau_i^{\text{safe}}$ is subsequently evaluated using weighted temporal logic robustness metrics. Consequently, the optimization process searches over semantically meaningful trajectories while all executed trajectories remain runtime certified by construction.
+
+
+% ----------------------------------------------------
+
+
+
+\subsection{Temporal Logic Objective}
+
+Semantic preferences and task requirements are encoded using the quantitative robustness semantics of weighted truncated linear temporal logic (wTLTL) \cite{wTLTL}. 
+Given a rollout trace $\mathcal{T}$ and a specification $\varphi$, the robustness value $\rho(\varphi,\mathcal{T})$ measures the degree to which the trajectory satisfies the logical specification.
+Given rollout trace $\mathcal{T}$ and specification $\varphi$,
+robustness is computed recursively as in \cite{wTLTL}.
+
+For predicates:
+\begin{align}
+\rho(\top) &= \rho_{\max} \\
+\rho(f(y)<c) &= c - f(y)
+\end{align}
+
+Negation:
+\begin{equation}
+\rho(\neg \varphi) = -\rho(\varphi)
+\end{equation}
+
+Weighted conjunction:
+\begin{equation}
+\rho\!\left(\bigwedge_w \varphi_i\right)
+=
+\otimes^\wedge(w,\rho_i)
+\end{equation}
+
+Weighted disjunction:
+\begin{equation}
+\rho\!\left(\bigvee_w \varphi_i\right)
+=
+\oplus^\vee(w,\rho_i)
+\end{equation}
+
+Temporal operators:
+
+\begin{align}
+\rho(\square \varphi)
+&=
+\min_{t'\in[t,\tau]}
+\rho(\varphi,t')
+\\
+\rho(\lozenge \varphi)
+&=
+\max_{t'\in[t,\tau]}
+\rho(\varphi,t')
+\end{align}
+
+Positive robustness implies satisfaction, negative implies violation.
+
+A smooth approximation $\rho_e$ is used during optimization \cite{wTLTL}.
+
+
+\subsection{Temporal Logic Objective and Control Regularization}
+
+While hard safety constraints are enforced by construction, the specific task behavior and semantic preferences are guided by a composite rollout objective.
+
+While hard geometric safety and impedance stability are guaranteed by construction (as detailed in above Sections), the specific task execution and semantic user preferences are guided by a composite cost function. For a given rollout trace $\mathcal{T}$ generated by the policy parameters $\Theta$, the total objective evaluated by the deterministic compiler is:
+\begin{equation}
+    J(\mathcal{T}) = J_{\mathrm{TL}} + 
+    + J_{\mathrm{gain\_reg}} + J_{K\text{-ceil}}
+    + J_{\mathrm{damp}} + J_{K\text{-human}}.
+\end{equation}
+The optimizer seeks to minimize this unconstrained objective, where each constituent term balances a specific aspect of the manipulation task.
+
+\paragraph{Temporal-Logic Robustness Costs}
+Language instructions mapped to the \texttt{PREFER} modality represent soft user preferences (e.g., human comfort zones). These contribute a weighted hinge loss based on the wTLTL robustness metric $\rho_i(\mathcal{T})$:
+\begin{equation}
+    J_{\mathrm{TL}} = \sum_{i\in\mathrm{PREFER}}
+        w_i\,\max\!\bigl(0,\,-\rho_i(\mathcal{T})\bigr).
+\end{equation}
+
+
+\paragraph{Gain-Parameter Regularization}
+To prevent the learned radial basis function (RBF) weights from drifting into excessively large magnitudes during exploration, we penalize values outside an admissible clip range $[-\bar{w},\bar{w}]$ (with $\bar{w}=15$):
+\begin{align}
+    J_{\mathrm{gain\_reg}} 
+    &= \frac{1}{N_{\mathrm{rbf}}}
+      \sum_j \max\!\bigl(0,\,|w^K_j|-\bar{w}\bigr)^2 \nonumber \\
+    &\quad + \frac{1}{N_{\mathrm{rbf}}}
+      \sum_j \max\!\bigl(0,\,|w^D_j|-\bar{w}\bigr)^2,
+\end{align}
+where $w^K_j$ and $w^D_j$ are the raw, pre-clip weights for the stiffness and damping schedules, respectively, and $N_{\mathrm{rbf}}$ is the number of basis functions.
+
+\paragraph{Operational Impedance Bounds}
+Although the Cholesky parameterization guarantees positive definiteness ($K \succ 0$), we must also bound the absolute magnitude of the gains for hardware safety. A safety-net penalty activates if the trace stiffness exceeds a maximum ceiling $K_{\max}=3000\,\mathrm{N/m}$:
+\begin{equation}
+    J_{K\text{-ceil}}
+    = \frac{1}{T}\sum_{k=1}^{T}
+      \left(
+        \frac{\max\!\bigl(0,\,\mathrm{tr}(K_k)-K_{\max}\bigr)}{K_{\max}}
+      \right)^{\!2}.
+\end{equation}
+Similarly, because sampling-based optimisers frequently reduce damping to achieve faster motions, we explicitly enforce a hardware-safe lower bound $D_{\min}=30\,\mathrm{Ns/m}$ on the trace damping $\mathrm{tr}(D)$:
+\begin{equation}
+    J_{\mathrm{damp}}
+    = \frac{2}{T}\sum_{k=1}^{T}
+      \left(
+        \frac{\max\!\bigl(0,\,D_{\min}-\mathrm{tr}(D_k)\bigr)}{D_{\min}}
+      \right)^{\!2}.
+\end{equation}
+
+\paragraph{Human-Proximity Stiffness Shaping}
+A key advantage of variable impedance control is the ability to yield during physical human-robot interaction. When a human operator is detected in the workspace, a distance-weighted penalty naturally encourages the policy to reduce the per-axis stiffness to a safe threshold ($K^h = 100\,\mathrm{N/m}$) inside a proximity radius $r_h$. The penalty scales smoothly over a ramp zone $[r_h,\,3r_h]$:
+\begin{equation}
+    w_h(d_k)
+    = \mathrm{clip}\!\left(
+        \frac{3r_h - d_k}{2r_h},\;0,\;1
+      \right),
+\end{equation}
+where $d_k = \|p(t_k) - p_{\mathrm{human}}\|_2$ is the distance to the human at time $t_k$. The proximity cost is then evaluated over the subset of timesteps $\mathcal{I}=\{k : d_k < 3r_h\}$ inside the interaction zone:
+\begin{equation}
+    J_{K\text{-human}}
+    = \frac{8}{|\mathcal{I}|}
+      \sum_{k\in\mathcal{I}}
+      w_h(d_k)\cdot
+      \frac{1}{3}\sum_{i=1}^{3}
+      \left(
+        \frac{\max(0,\,K_{ii}(t_k)-K^h)}{K^h}
+      \right)^{\!2}.
+\end{equation}
+Because this cost is aggressively optimized by the PIBB algorithm, the resulting trajectories automatically exhibit compliant, low-stiffness behavior when navigating near human operators, while maintaining high precision and stiffness in free space.
+
+
+
+
+\subsection{Policy Optimization}
+
+Policy parameters are optimized using Policy Improvement with Black-Box Optimization (PIBB), a sampling-based policy search algorithm widely used for motion primitive learning \cite{wTLTL}.
+Exploration was performed in unconstrained coordinates $\xi$ (trajectory parameters, gain factors, and slack variables), sampled from a Gaussian:
+\begin{equation}
+\xi^{(m)} \sim \mathcal{N}(\mu,\Sigma),\qquad m=1,\dots,M_{\mathrm{roll}}.
+\end{equation}
+Each sample $\xi^{(m)}$ was mapped through the certified manifold construction to a feasible policy
+$\Theta^{(m)}=(\theta^{(m)},\psi^{(m)})$, guaranteeing satisfaction of hard constraints.
+
+For each rollout, we executed the policy to obtain a trace $\mathcal{T}^{(m)}$ and evaluated $J^{(m)}=J(\mathcal{T}^{(m)})$.
+PIBB importance weights were computed as
+\begin{equation}
+w^{(m)} =
+\frac{\exp(-J^{(m)}/\lambda)}
+{\sum_{j=1}^{M_{\mathrm{roll}}}\exp(-J^{(j)}/\lambda)},
+\end{equation}
+and the mean parameters were updated via weighted averaging.
+
+
+
+#exp-sid
+\section{EXPERIMENTS}
+
+
+\begin{table}[h]
+\caption{Summary of experimental scenarios.}
+\label{tab:exp_overview}
+\centering
+\resizebox{\columnwidth}{!}{%
+\begin{tabular}{llcll}
+\toprule
+Exp & Task & $T$\,(s) & Key constraint \\
+\midrule
+1a & Carry, avoid human           & 10 & Body excl.\ $r{=}0.08$\,m   \\
+1b & Same, tight deadline         &  3 & Body excl.\ $r{=}0.08$\,m   \\
+2  & Carry $\to$ hold $\to$ cont. & 11 & Obstacle $r{=}0.12$\,m     \\
+3a & Carry mug $\to$ pour         & 10 & Laptop $r{=}0.12$\,m       \\
+3b & Carry marker $\to$ deliver   & 10 & Laptop $r{=}0.12$\,m       \\
+\bottomrule
+\end{tabular}%
+}
+\end{table}
+
+
+We evaluate the proposed framework across three manipulation scenarios designed to probe distinct capabilities: (i)~separation of hard geometric safety from soft semantic preferences under temporal pressure, (ii)~multi-phase temporal sequencing with kinematic hold constraints, and (iii)~language-driven semantic reasoning that autonomously toggles constraint enforcement modalities based on object affordances (Table~\ref{tab:exp_overview}). 
+
+In all experiments, the robot end-effector starts at $p_0=[0.55,\,0,\,0.30]$\,m. Optimization is performed using Policy Improvement with Black-Box Optimization (PIBB). All task specifications are compiled automatically from natural language instructions via the semantic interface described in Appendix~\ref{appendix:llm}.
+
+
+
+%------------------------------------------------------------------
+\begin{figure}[t]
+    \centering
+    \includegraphics[width=\linewidth]{Shreyas/images/exp 1/exp1.png}
+    \caption{Experiment 1 results for human-aware manipulation under temporal trade-offs. \textbf{Left:} Workspace trajectories comparing a relaxed deadline ($T=10$\,s, blue) vs. a tight deadline ($T=3$\,s, brown). Under time pressure, the optimizer trades the soft \texttt{PREFER} comfort zone ($r_c=0.19$\,m) to meet the objective while strictly preserving the \texttt{HARD} body exclusion guarantee ($r=0.08$\,m). \textbf{Right:} Corresponding per-axis stiffness profiles ($K_{xx}, K_{yy}, K_{zz}$). In the relaxed scenario (blue), stiffness drops smoothly toward the $K^h=100$\,N/m compliance target as the robot dwells within the interaction zone. In the tight scenario (brown), high stiffness is maintained as the robot rapidly bypasses the comfort zone, demonstrating principled negotiation between safety-critical guarantees and semantic preferences.}
+    \label{fig:comp_exp1}
+\end{figure}
+\subsection{Experiment 1: Human-Aware Manipulation Under Temporal Trade-off}
+
+\subsubsection{Setup}
+A human operator is situated at $p_h=[0.30,\,0.30,\,0.30]$\,m, directly obstructing the nominal path between the start and the goal. The compiler translates the natural language instruction into two concentric constraints with human avoidance predicate in two ways:
+\begin{itemize}
+  \item \textbf{Body exclusion} ($r=0.08$\,m, \texttt{HARD}): Geometrically guaranteed at every timestep by the three-layer architecture to prevent physical collision.
+  \item \textbf{Comfort zone} ($r_c=0.19$\,m, \texttt{PREFER}): A soft wTLTL preference for remaining outside the human's personal space.
+\end{itemize}
+Additionally, a proximity cost ($J_{K\text{-human}}$) encourages the per-axis stiffness to smoothly drop toward a compliant target of $K^h=100$\,N/m near the human. We evaluate this setup under two different temporal budgets to observe the optimizer's trade-off behavior.
+
+\subsubsection{Results}
+In \textbf{Experiment 1a} (relaxed time budget, $T=10$\,s), the optimizer has sufficient freedom to successfully route the trajectory entirely around the human's comfort zone (Fig.~\ref{fig:comp_exp1}, workspace). Because the robot dwells near the human while safely bypassing the zone, all three stiffness axes drop smoothly toward the compliance target $K^h$ (Fig.~\ref{fig:comp_exp1}, stiffness profile), demonstrating emergent semantic compliance.
+
+
+
+
+In \textbf{Experiment 1b} (tight time budget, $T=3$\,s), the severe deadline raises the temporal logic cost of detouring. To complete the task in time, the optimizer deliberately trades the soft \texttt{PREFER} comfort preference and cuts through the human's outer comfort zone. Crucially, the hard body exclusion guarantee ($r=0.08$\,m) remains strictly mathematically inviolable. Furthermore, because the robot moves quickly and does not dwell near the human, the stiffness remains relatively high, preserving precise tracking (Fig.~\ref{fig:exp1workspaceAndStiffness}, stiffness profile). This demonstrates the framework's principled capability to negotiate soft preferences under competing objectives while maintaining absolute safety guarantees.
+
+
+%------------------------------------------------------------------
+\begin{figure}[t]
+    \centering
+    \includegraphics[width=\linewidth]{Shreyas/images/exp 2/exp2.png}
+    \caption{\textcolor{red}{Experiment 2} Fixed z ($0.3$m) top-down view of the end-effector trajectory for the carry-hold-continue task. \\ \textit{phase A} (0--5\,s): carry from $[0.55,0,0.30]$\,m toward the intermediate waypoint $[0.20,0.35,0.30]$\,m; then hold stationary at the waypoint for 2\,s; \textit{phase B} (7-11\,s): continue to the final goal $[0.30,0.55,0.30]$\,m. Orientation remains constant across all phases. \\ Top view for above (Experiment 2) when these is hold phase of 2 second  and obstacle is hard constraint.  
+}
+\label{fig:exp2_workspace}
+\end{figure}
+
+
+
+
+
+
+\subsection{Experiment 2: Multi-Phase Sequencing with Hard Obstacle Avoidance}
+
+\subsubsection{Setup}
+This experiment evaluates the framework's ability to satisfy complex temporal sequencing combined with obstacle avoidance. The robot is instructed to execute a three-phase task:
+\begin{enumerate}
+  \item \textbf{Carry} (0--5\,s): Navigate to an intermediate waypoint, avoiding a rigid, non-human obstacle ($r=0.12$\,m, \texttt{HARD}).
+  \item \textbf{Hold} (5--7\,s): Remain strictly stationary at the waypoint (\texttt{ZeroVelocity}, \texttt{REQUIRE}).
+  \item \textbf{Continue} (7--11\,s): Proceed to the final goal while keeping the end-effector orientation constant.
+\end{enumerate}
+Because no human is involved in this scene, compliant stiffness reduction is not semantically required.
+
+\subsubsection{Results}
+The workspace trajectory and top-down projection (Fig.~\ref{fig:exp2_workspace}) confirm certified obstacle avoidance across both the carry and continue phases. During the required hold phase (5--7\,s), all three Cartesian velocity components smoothly converge to exactly zero that can be verified with change in position  (Fig.~\ref{fig:exp2_workspace}), perfectly enforcing the temporal logic constraint before re-accelerating toward the goal. Because neither the obstacle nor the goal involves a human operator, the proximity cost remains inactive, and the per-axis stiffness is maintained at high, task-appropriate levels throughout the entire sequence via the certified Cholesky parameterization.
+
+
+
+%------------------------------------------------------------------
+\begin{figure}[t]
+    \centering
+    \includegraphics[width=\linewidth]{Shreyas/images/exp 3/exp3.png}
+    \caption{Experiment 3 results for language-driven modality selection. \textbf{Left:} Comparative end-effector trajectories for a carry-at-goal task. In Scenario A (coffee mug), the LLM infers a spill risk and assigns a \texttt{HARD} modality to the laptop obstacle, activating the Layer 3 geometric backstop to route the robot strictly around the exclusion zone ($r=0.12$\,m). In Scenario B (marker), the LLM assigns a soft \texttt{PREFER} modality ($w=15$), allowing the optimizer to penetrate the soft boundary for a more direct path. \textbf{Right:} Corresponding per-axis stiffness profiles ($K_{xx}, K_{yy}, K_{zz}$). In both cases, stiffness is maintained for precise tracking during transport but reduces smoothly toward the compliance target ($K^h=100$\,N/m) as the end-effector approaches the human operator at the goal, governed by the $J_{K\text{-human}}$ proximity cost.}
+    \label{fig:exp3_results}
+\end{figure}
+
+
+
+
+% \begin{figure}[t]
+%     \centering
+%     \includegraphics[width=\linewidth]{Shreyas/images/exp 3/exp3.png}
+%     \caption{\textcolor{red}{Experiment 3} End-effector workspace trajectory for the two-phase carry--pour task (Experiment 3a): \textit{Phase 1} (0-7\,s): carry the glass keeping orientation fixed from $[0.55,0,0.30]$\,m to the pour waypoint while respecting the HARD obstacle ($r=0.12$\,m) at $[0.40,0.30,0.30]$\,m;\textit{Phase 2} (7-10\,s): reorient the end-effector to the pour pose ($q=[0.7071,0,0.7071,0]$, $90°$ tilt about the it's axis) at the goal $[0.30,0.55,0.30]$\,m. The HARD obstacle guarantee is preserved across both phases by the three-layer safety architecture (repulsive DMP forcing, radial projection, and slack penalty). \\ End-effector trajectory for Experiment 3b: identical geometry to Experiment 3a but with the obstacle constraint changer from \texttt{HARD} to \texttt{PREFER} (soft, $w=15$) as now object end effector is holding is marker and this comes from LLM inference also no poring in this case we need to carry marker to goal here. Without the geometric guarantee, the optimizer may route the end-effector through the obstacle's exclusion zone when doing so reduces the overall cost, illustrating the consequence of removing certified safety in favor of soft penalization. Comparison with Fig.~\ref{fig:exp3a_workspace} highlights the utility of the three-layer \texttt{HARD} enforcement. \\ Per-axis stiffness for Experiment 3b. Stiffness profile follow the same qualitative pattern as Experiment (Fig.~\ref{fig:exp3a_stiffness}), confirming that impedance stability is preserved regardless of obstacle modality. The key difference lies in the spatial path (Fig.~\ref{fig:exp3b_workspace}), where the lack of a certified collision backstop allows constraint penetration. \\ Per-axis stiffness for Experiment 3a (carry-pour). During the carry phase the optimizer maintains high stiffness for precise positioning; stiffness reduces in all three axes as the end-effector enters the pour phase near human and the human-proximity cost $J_{K\text{-human}}$ activates near the goal. The certified Cholesky parameterization guarantees positive-definite gains and Lyapunov-stable impedance at every timestep.
+% }
+% \label{fig:exp3b_workspace}
+% \end{figure}
+
+\subsection{Experiment 3: Language-Driven Semantic Modality Selection}
+
+Experiments 3a and 3b share an identical spatial workspace but differ in the semantic description of the object being manipulated. This experiment evaluates whether the LLM can correctly infer object affordances to autonomously toggle the mathematical constraint layers. In both scenarios, the final goal is a human operator, meaning stiffness must dynamically drop upon reaching the destination.
+
+\subsubsection{Experiment~3a --- Coffee Mug: Carry and Pour}
+The language instruction specifies carrying a coffee mug to the human goal and pouring the contents. The LLM identifies the intermediate laptop obstacle as a severe liquid spill risk and automatically assigns a \texttt{HARD} modality. It also specifies that orientation must remain upright until the goal is reached, followed by a $90^\circ$ rotation to execute the pour.
+
+As shown in the hardware deployment (Fig.~\ref{fig:real_exp3a}) and the simulated traces (Fig.~\ref{fig:exp3_results}), the trajectory strictly routes around the laptop using the Layer 3 geometric backstop. The orientation profile maintains a stable upright pose during the carry phase and smoothly interpolates in $SO(3)$ log space to the target $90^\circ$ pour orientation upon reaching the human (Fig.~\ref{fig:exp3a_orientation}). As expected, stiffness drops compliantly at the goal to facilitate safe handover.
+
+
+
+
+\subsubsection{Experiment~3b --- Marker: Semantic Softening}
+The exact same physical scene is re-run, but the user specifies handing over a dry marker. Recognizing that a marker poses no spill risk, the LLM safely relaxes the laptop obstacle constraint to a soft \texttt{PREFER} modality and removes the pouring requirement.
+
+Because the geometric backstop is deactivated for soft preferences, the optimizer determines it is more cost-effective to safely pass over the laptop's extended exclusion zone to minimize path length (Fig.~\ref{fig:real_exp3b} and Fig.~\ref{fig:exp3_results}). The orientation remains consistently upright since no pouring is required. Despite this drastic change in spatial routing, the stiffness profile still successfully drops near the human goal (Fig.~\ref{fig:exp3_results}). This highlights the framework's core ability: identical geometric scenes yield vastly different, physically guaranteed robot behaviors driven purely by natural language semantic reasoning.
+
+\begin{figure}[t]
+    \centering
+    \includegraphics[width=0.8\linewidth]{Shreyas/images/exp 3/orientation.png}
+    \caption{Orientation tracking for the carry--pour task (Exp.~3a). The end-effector maintains a constrained upright pose during the transport phase before smoothly interpolating in $SO(3)$ log-space to the target pour orientation. The convergence of the geodesic error ($\|e_R\| \to 0$) demonstrates the precision of the orientation DMP in satisfying high-level semantic transitions while maintaining controller stability.}
+    \label{fig:exp3a_orientation}
+\end{figure}
+
+\begin{figure*}[t]
+    \centering
+    \includegraphics[width=\linewidth]{Shreyas/images/real/2.png}
+    \caption{\textcolor{red}{Experiment 2}}
+    \label{fig:real2}
+\end{figure*}
+
+\begin{figure*}[t]
+    \centering
+    \includegraphics[width=\linewidth]{Shreyas/images/real/1a.png}
+    \caption{\textcolor{red}{Experiment 3} Hardware deployment on the Franka FR$3$ arm demonstrating language-driven semantic modality selection (Experiment 3a). The instruction requires handing over a glass of liquid. The semantic compiler infers a severe spill risk and assigns a \texttt{HARD} modality to the laptop obstacle, activating the Layer 3 geometric backstop to route the trajectory strictly around the device. }
+    \label{fig:real_exp3a}
+\end{figure*}
+
+
+\begin{figure*}[t]
+    \centering
+    \includegraphics[width=\linewidth]{Shreyas/images/real/1b.png}
+    \caption{\textcolor{red}{Experiment 3} Hardware deployment on the Franka FR$3$ arm demonstrating language-driven semantic modality selection (Experiment 3b). The instruction requests handing over a dry marker. The LLM infers a safe affordance and relaxes the obstacle to a \texttt{PREFER} modality. Without HARD constarint the optimizer dynamically routes the end-effector safely over the laptop to minimize the temporal logic cost, demonstrating complex physical adaptation based purely on object semantics.}
+    \label{fig:real_exp3b}
+\end{figure*}
+
+
+
+#conclusion_sid
+\section{CONCLUSION}
+
+We presented this framework for certified policy synthesis that bridges the gap between high-level natural language instructions and low-level safe robot control. By compiling weighted temporal logic specifications into a three-layer safety architecture, we demonstrated that robots can autonomously negotiate soft semantic preferences while maintaining absolute, mathematically guaranteed geometric safety. Our results across diverse manipulation scenarios show that the framework successfully adapts to temporal pressure, complex sequencing, and object-dependent semantic reasoning. 
+
+Crucially, the use of a certified policy manifold ensures that even during stochastic exploration, the robot respects hardware feasibility and impedance stability limits. Hardware experiments on a Franka FR3 arm validated that these language-driven policies produce physically consistent and compliant behaviors in human-centered environments. 
+
+Future work will focus on extending the framework to dynamic, non-convex environments and integrating real-time visual feedback to allow for reactive adaptation to moving obstacles. We also intend to explore the use of large multimodal models to automatically infer more complex interaction constraints directly from visual scene geometry.
+
+
+#appendix_sid
+
+
+% ========================================== %
+%                 APPENDIX                   %
+% ========================================== %
+\appendix
+
+\section{Language Interface: LLM-to-Specification Pipeline}
+\label{appendix:llm}
+
+This appendix outlines the language interface that translates natural language task descriptions into validated \texttt{TaskSpec} objects. To decouple the stochastic nature of the large language model (LLM) from the certified downstream policy, no LLM output reaches the optimizer directly. Instead, all responses are intercepted by a deterministic firewall before compilation.
+
+\paragraph{Predicate Catalogue and Locked Modalities}
+The LLM is prompted with a structured scene description and restricted to a closed vocabulary of geometric and kinematic predicates (e.g., \texttt{ObstacleAvoidance}, \texttt{VelocityLimit}, \texttt{AtGoal}). Crucially, enforcement modalities for safety-critical predicates are deterministically locked and cannot be overridden by the language model. For instance, \texttt{HumanAvoidance} is strictly enforced as a \texttt{HARD} constraint, while dynamic bounds are locked to \texttt{REQUIRE}. The LLM is only permitted to assign \texttt{PREFER} modalities to soft task constraints.
+
+\paragraph{Two-Pass Validation and Retry Protocol}
+The extracted JSON specification undergoes a strict two-pass validation. The first pass evaluates structural integrity, immediately rejecting hallucinated predicates, unauthorized modality assignments, or invalid temporal logic operators. If structural errors are detected, the compiler appends the error trace to the conversation history and triggers an automatic LLM retry (capped at three attempts). 
+
+The second pass performs silent numerical clamping. Any extracted continuous parameters (e.g., spatial radii, logic weights, or task horizons) that fall outside the physically admissible bounds predefined in the predicate catalogue are clamped to their nearest valid threshold. This two-pass design guarantees that malformed or adversarial LLM outputs cannot propagate unsafe configurations into the certified policy search. 
+% Code and congid files are at: \url{https://github.com/siddharth-j1/LaSTA}.
+
+
+
+
+
+

@@ -12,6 +12,11 @@
 
 - Added repulsive-force activation diagnostics to runtime safety traces and Exp 3a terminal output; extended trace safety with repulsive-force arrays. Affects [core/cgms/dmp_with_gain.py](core/cgms/dmp_with_gain.py), [core/multi_phase_policy.py](core/multi_phase_policy.py), and [main_exp3a.py](main_exp3a.py).
 
+## 2026-05-22 23:57 IST
+
+- Added explicit avoidance_geometry field for obstacle predicates (decoupled from modality), updated LLM prompt/validation, and wired parser to honor the field. Affects [spec/json_parser.py](spec/json_parser.py), [llm_interface/predicate_catalogue.py](llm_interface/predicate_catalogue.py), [llm_interface/validator.py](llm_interface/validator.py), and [llm_interface/prompt_builder.py](llm_interface/prompt_builder.py).
+- Updated Exp 3 specs to use avoidance_geometry and switched Exp 3b to HARD obstacle avoidance with object-dependent geometry; updated Exp 3b script text and behavior to match. Affects [spec/exp3a_task.json](spec/exp3a_task.json), [spec/exp3b_task.json](spec/exp3b_task.json), [spec/exp3c_task.json](spec/exp3c_task.json), and [main_exp3b.py](main_exp3b.py).
+
 ## 2026-05-19 00:37 IST
 
 - Added runtime obstacle HOCBF filter (relative-degree-2) with epsilon-inflated safe radius and per-step diagnostics, applied after DMP repulsion and before velocity CBF. Affects [core/cbf_filter.py](core/cbf_filter.py), [core/cgms/dmp_with_gain.py](core/cgms/dmp_with_gain.py), and [core/multi_phase_policy.py](core/multi_phase_policy.py).

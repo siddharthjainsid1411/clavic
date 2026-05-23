@@ -12,11 +12,11 @@ CGMS guarantee K=Q^T Q > 0 is maintained throughout.
 Human-proximity stiffness reduction is active (same compiler cost).
 
 Plots (PNG only):
-    1. exp3c_workspace.png      - 3D Franka workspace view
-    2. exp3c_topdown.png        - 2D X-Y top-down view
-    3. exp3c_stiffness.png      - Per-axis Kxx/Kyy/Kzz vs time
-    4. exp3c_orientation.png    - quaternion tracking + angular error to q_ref
-    5. exp3c_kinematics.png     - Position and velocity timeseries
+    1. exp3d_workspace.png      - 3D Franka workspace view
+    2. exp3d_topdown.png        - 2D X-Y top-down view
+    3. exp3d_stiffness.png      - Per-axis Kxx/Kyy/Kzz vs time
+    4. exp3d_orientation.png    - quaternion tracking + angular error to q_ref
+    5. exp3d_kinematics.png     - Position and velocity timeseries
 """
 
 import numpy as np
@@ -215,7 +215,7 @@ def _obs_box_faces(cx, cy, cz, dx, dy, dz_bot, dz_top):
 # ======================================================================
 #  PLOT 1 -- 3D workspace
 # ======================================================================
-def plot_3d_workspace(trace, best_cost, base="exp3c_workspace"):
+def plot_3d_workspace(trace, best_cost, base="exp3d_workspace"):
     pos = trace.position
     t   = trace.time
 
@@ -313,7 +313,7 @@ def plot_3d_workspace(trace, best_cost, base="exp3c_workspace"):
 # ======================================================================
 #  PLOT 2 -- 2D top-down view
 # ======================================================================
-def plot_2d_topdown(trace, best_cost, base="exp3c_topdown"):
+def plot_2d_topdown(trace, best_cost, base="exp3d_topdown"):
     pos = trace.position
     t   = trace.time
 
@@ -410,7 +410,7 @@ def plot_2d_topdown(trace, best_cost, base="exp3c_topdown"):
 # ======================================================================
 #  PLOT 3 -- per-axis stiffness vs time
 # ======================================================================
-def plot_stiffness(trace, best_cost, base="exp3c_stiffness"):
+def plot_stiffness(trace, best_cost, base="exp3d_stiffness"):
     K_arr  = trace.gains["K"]
     Kd     = np.array([[K[0,0], K[1,1], K[2,2]] for K in K_arr])
     t      = trace.time
@@ -472,7 +472,7 @@ def plot_stiffness(trace, best_cost, base="exp3c_stiffness"):
 # ======================================================================
 #  PLOT 4 -- Euler orientation vs time
 # ======================================================================
-def plot_orientation_euler(trace, best_cost, base="exp3c_orientation"):
+def plot_orientation_euler(trace, best_cost, base="exp3d_orientation"):
     if trace.orientation is None:
         print("No orientation - skipping orientation plot.")
         return
@@ -528,7 +528,7 @@ def plot_orientation_euler(trace, best_cost, base="exp3c_orientation"):
 # ======================================================================
 #  PLOT 5 -- position and velocity timeseries
 # ======================================================================
-def plot_kinematics(trace, best_cost, base="exp3c_kinematics"):
+def plot_kinematics(trace, best_cost, base="exp3d_kinematics"):
     pos   = trace.position
     vel   = trace.velocity
     t     = trace.time
@@ -611,7 +611,7 @@ def plot_kinematics(trace, best_cost, base="exp3c_kinematics"):
 
 
 
-def save_trajectory_csv(trace, csv_path="exp3c_trajectory.csv"):
+def save_trajectory_csv(trace, csv_path="exp3d_trajectory.csv"):
     import csv
     pos   = trace.position
     T     = len(trace.time)
@@ -653,7 +653,7 @@ def main():
     global Q_UPRIGHT, T_CARRY_END, T_HOLD_END
     global HUMAN_POS, OBS_HX, OBS_HY
 
-    taskspec = load_taskspec_from_json("spec/exp3c_task.json")
+    taskspec = load_taskspec_from_json("spec/exp3d_task.json")
     assert taskspec.phases is not None
 
     phases = taskspec.phases
@@ -667,7 +667,7 @@ def main():
     obs_clause = next((c for c in taskspec.clauses
                        if c.predicate == "ObstacleAvoidance"), None)
     if obs_clause is None:
-        raise ValueError("exp3c_task.json must include an ObstacleAvoidance clause")
+        raise ValueError("exp3d_task.json must include an ObstacleAvoidance clause")
 
     if "obstacle_position" not in obs_clause.parameters or "safe_radius" not in obs_clause.parameters:
         raise ValueError("ObstacleAvoidance clause must provide obstacle_position and safe_radius")
@@ -761,7 +761,7 @@ def main():
     print("Optimization complete.\n")
 
     trace_final = policy.rollout(best_theta)
-    save_trajectory_csv(trace_final, csv_path="exp3c_trajectory.csv")
+    save_trajectory_csv(trace_final, csv_path="exp3d_trajectory.csv")
     print_diagnostics(trace_final, best_cost)
 
     plot_3d_workspace(trace_final, best_cost)

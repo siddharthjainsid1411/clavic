@@ -52,6 +52,7 @@
       "predicate": "ObstacleAvoidance",
       "weight": 20.0,
       "modality": "HARD",
+      "avoidance_geometry": "sphere",
       "hard_strength": 0.10,
       "hard_infl_factor": 3.0,
       "_comment": "HARD: DMP repulsion + radial projector (geometric guarantee)"

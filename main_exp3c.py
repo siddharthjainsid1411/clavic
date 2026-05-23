@@ -729,7 +729,7 @@ def main():
     best_cost  = float("inf")
     best_theta = theta_init.copy()
 
-    hard_strength = 0.05
+    hard_strength = 0.10
     hard_infl = 2.5
     if obs_clause.hard_obstacle is not None:
         hard_strength = float(obs_clause.hard_obstacle.get("strength", hard_strength))

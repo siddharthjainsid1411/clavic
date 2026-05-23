@@ -9,6 +9,8 @@ _OBSTACLE_PREDICATES = {
     "HumanBodyExclusion": ("human_position",    "body_radius"),
 }
 
+_AVOIDANCE_GEOMETRY = {"sphere", "cylinder_infinite"}
+
 def _geometry_from_modality(modality):
     """
     Deterministic geometry policy:
@@ -16,6 +18,18 @@ def _geometry_from_modality(modality):
       SOFT / PREFER / legacy REQUIRE -> sphere
     """
     return "cylinder_infinite" if str(modality).upper() == "HARD" else "sphere"
+
+
+def _resolve_avoidance_geometry(raw_geometry, modality):
+    """Return canonical geometry string, falling back to modality default."""
+    if raw_geometry is None:
+        return _geometry_from_modality(modality)
+    geom = str(raw_geometry).strip().lower()
+    if geom not in _AVOIDANCE_GEOMETRY:
+        raise ValueError(
+            f"avoidance_geometry must be one of {sorted(_AVOIDANCE_GEOMETRY)}, got {raw_geometry!r}."
+        )
+    return geom
 
 
 def _normalize_modality(modality):
@@ -95,7 +109,7 @@ def load_taskspec_from_json(path):
             # For obstacle-like predicates, geometry is deterministic by modality.
             if predicate in _OBSTACLE_PREDICATES:
                 center_key, radius_key = _OBSTACLE_PREDICATES[predicate]
-                geometry = _geometry_from_modality(modality)
+                geometry = _resolve_avoidance_geometry(c.get("avoidance_geometry"), modality)
                 parameters["geometry"] = geometry
 
                 # Optional generic shape-driven radius extraction:
@@ -119,7 +133,7 @@ def load_taskspec_from_json(path):
                 center_key, radius_key = _OBSTACLE_PREDICATES[predicate]
                 center = parameters.get(center_key)
                 radius = parameters.get(radius_key)
-                geometry = _geometry_from_modality(modality)
+                geometry = _resolve_avoidance_geometry(c.get("avoidance_geometry"), modality)
                 if center is not None and radius is not None:
                     center_list = center.tolist() if hasattr(center, "tolist") else list(center)
                     hard_obstacle = {

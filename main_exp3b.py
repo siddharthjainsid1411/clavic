@@ -1,10 +1,10 @@
 """
-Exp 3b: Ball Delivery to Human — Soft Obstacle Avoidance (weight-controlled).
+Exp 3b: Ball Delivery to Human — HARD Obstacle Avoidance (object-dependent geometry).
 
 Same geometry as Scene 3 (start/goal/obstacle positions identical), but the
-object being carried is a harmless ball.  Obstacle avoidance is a SOFT
-PREFER constraint: the optimizer has a weighted penalty for penetrating the
-obstacle zone, but NO geometric enforcement (no DMP repulsion, no projector).
+Object being carried is a harmless ball. Obstacle avoidance is HARD and uses
+repulsion + runtime HOCBF + projector backstop. Geometry is chosen explicitly
+by avoidance_geometry in the task spec.
 
 The key idea: the weight parameter controls the avoidance tradeoff.
   Low weight  → optimizer ignores obstacle, takes straight path through it
@@ -16,17 +16,12 @@ and the trajectory clips the obstacle zone. Here we control that directly
 via the obstacle weight.
 
 Three-tier avoidance comparison:
-  Scene 3  (avoidance="HARD"):  DMP repulsion + radial projector
-                                 → GUARANTEED ||p(t)-c|| ≥ r  ∀t
-  avoidance="SOFT"           :  DMP repulsion ONLY
-                                 → path PREFERS to avoid, no geometric guarantee
-  Scene 3b (avoidance="NONE"):  No repulsion, no projector
-                                 → soft optimizer cost only (PREFER clause)
-                                 → weight controls how hard the optimizer tries
-                                 → penetration acceptable — ball is harmless
+    HARD  → DMP repulsion + runtime HOCBF + projector backstop
+    SOFT  → DMP repulsion only (preferred, no guarantee)
+    NONE  → no repulsion, no projector (raw behavior)
 
 2-phase task:
-  Phase 1 (0-7s) : carry ball from start to human, obstacle cost = PREFER
+    Phase 1 (0-7s) : carry ball from start to human, obstacle avoidance = HARD
   Phase 2 (7-10s): hold at human position (no pour — ball stays upright)
 
 CGMS guarantee K=Q^T Q > 0 is maintained throughout (same as Scene 3).
@@ -106,7 +101,7 @@ C_KZ     = "#55A868"
 C_BALL   = "#FF7F0E"    # orange accent for ball label
 
 # ── annotation ────────────────────────────────────────────────────────
-SCENE_LABEL = "Exp 3b — Ball Delivery (soft obstacle avoidance, weight-controlled)"
+SCENE_LABEL = "Exp 3b — Ball Delivery (HARD obstacle avoidance, object-dependent geometry)"
 
 
 # ── predicates ────────────────────────────────────────────────────────
@@ -188,12 +183,12 @@ def print_diagnostics(trace, best_cost):
     obs_w = "n/a" if OBS_WEIGHT is None else f"{OBS_WEIGHT:.2f}"
     sep = "=" * 48
     print(f"\n{sep} EXP 3b DIAGNOSTICS {sep}")
-    print(f"  Scene             : Ball delivery (soft PREFER, weight={obs_w}, avoidance=NONE)")
+    print(f"  Scene             : Ball delivery (HARD obstacle avoidance, geometry={OBSTACLE_GEOMETRY})")
     print(f"  Best cost         : {best_cost:.4f}")
     print(f"  Goal reached      : {'YES' if reached else 'NO'}  t={t_reach:.2f} s")
     print(f"  Max speed         : {speed.max():.4f} m/s  (limit 0.8)")
-    print(f"  Obstacle clearance: {obs_cm:.1f} cm  (PREFER soft {OBSTACLE_GEOMETRY}, penetration acceptable)")
-    print(f"  Pts inside obs    : {n_inside}  (PREFER soft: nonzero acceptable)")
+    print(f"  Obstacle clearance: {obs_cm:.1f} cm  (HARD {OBSTACLE_GEOMETRY}, r={OBS_RAD:.2f} m)")
+    print(f"  Pts inside obs    : {n_inside}  (HARD: must be 0)")
     print(f"  Hold pos drift    : {hold_drift*100:.1f} cm  (target < 5)")
     print(f"  tr(K) range       : [{trK.min():.0f}, {trK.max():.0f}] N/m")
     print(f"  tr(D) range       : [{trD.min():.1f}, {trD.max():.1f}] Ns/m")
@@ -302,7 +297,7 @@ def plot_3d_workspace(trace, best_cost, base="exp3b_workspace"):
     ax.text(gp[0]+0.03, gp[1]+0.01, gp[2]+0.03, "Human\n(goal)",
             fontsize=8, fontweight="bold", color=C_GOAL)
     obs_p = to_plot(OBSTACLE)
-    ax.text(obs_p[0], obs_p[1]+0.04, obs_p[2]+0.03, "Obstacle\n(soft)",
+    ax.text(obs_p[0], obs_p[1]+0.04, obs_p[2]+0.03, "Obstacle\n(HARD)",
             fontsize=7, color="#555555", ha="center")
 
     ax.set_xlabel("X — forward/depth (m)", fontsize=9, labelpad=7)
@@ -319,7 +314,7 @@ def plot_3d_workspace(trace, best_cost, base="exp3b_workspace"):
         mpatches.Patch(facecolor="#1A1A1A", alpha=0.90, edgecolor="#000",
                        label="Obstacle base (solid)"),
         mpatches.Patch(facecolor=C_OBS,     alpha=0.30, edgecolor="#666",
-                       label="Obstacle upper (soft avoidance)"),
+                   label="Obstacle upper (HARD avoidance)"),
         mpatches.Patch(facecolor=C_HUMAN,   alpha=0.25, edgecolor=C_HUMAN,
                        label=f"Human zone (r={r_cyl:.2f} m)"),
     ]
@@ -715,24 +710,13 @@ def main():
 
     policy = MultiPhaseCertifiedPolicy(taskspec.phases, K0=300.0, D0=30.0)
 
-    # Register runtime CBFs (velocity/orientation/ang-vel) from JSON clauses.
-    # There is no HARD obstacle clause in exp3b, so no obstacle HOCBF/projector
-    # is configured by this call.
+    # Register runtime CBFs (velocity/orientation/ang-vel) and HARD obstacle
+    # avoidance (repulsion + runtime HOCBF + projector backstop) from JSON.
     policy.setup_hard_obstacles_from_taskspec(taskspec)
 
-    # avoidance="NONE": no DMP repulsion, no hard projector.
-    # exp3b uses modality="PREFER" in JSON (intentional soft avoidance for comparison).
-    # We still call set_obstacles with avoidance="NONE" to explicitly disable DMP
-    # repulsion and the radial projector — the soft PREFER cost is the only force.
-    policy.set_obstacles([
-        {"center": OBSTACLE.tolist(), "radius": OBS_SAFE_RAD,
-            "geometry": OBSTACLE_GEOMETRY, "avoidance": "NONE"},
-    ])
-
     theta_dim = policy.parameter_dimension()
-    print(f"Exp 3b: Ball delivery — soft PREFER obstacle avoidance (weight={OBS_WEIGHT:.2f})")
-    print(f"  avoidance=NONE: no DMP repulsion, no projector")
-    print(f"  Soft cost only: weight={OBS_WEIGHT:.2f} * max(0, -rho)  in objective")
+    print("Exp 3b: Ball delivery — HARD obstacle avoidance (object-dependent geometry)")
+    print(f"  obstacle geometry: {OBSTACLE_GEOMETRY}, radius={OBS_RAD:.3f} m")
     print(f"Multi-phase policy: {len(taskspec.phases)} phases, theta_dim={theta_dim}")
     print(f"  has_orientation: {policy.has_orientation}")
     for i, p in enumerate(taskspec.phases):
@@ -769,7 +753,9 @@ def main():
     best_theta = theta_init.copy()
 
     print(f"\nPIBB: {N_UPDATES} updates x {N_SAMPLES} samples")
-    print(f"  Obstacle: PREFER (soft), weight={OBS_WEIGHT:.2f}, geometry={OBSTACLE_GEOMETRY}, avoidance=NONE")
+    print(
+        f"  Obstacle: HARD (geometry={OBSTACLE_GEOMETRY}, r={OBS_RAD:.2f} m)"
+    )
     print(f"  K penalty: ramp [d < {HUMAN_RAMP_RAD} m], limit {K_AXIS_LIMIT:.0f} N/m at [d < {HUMAN_PROX_RAD} m]")
 
     for upd in range(N_UPDATES):

@@ -59,6 +59,10 @@ def _build_catalogue_section() -> str:
                 f"    hard_infl_factor   : default={cat['hard_infl_factor_default']}, "
                 f"range={cat['hard_infl_factor_range']}  (only for HARD modality)"
             )
+        if cat.get("allowed_geometry"):
+            lines.append(
+                f"    avoidance_geometry : one of {cat['allowed_geometry']} (object-dependent)"
+            )
         lines.append("")
     return "\n".join(lines)
 
@@ -115,6 +119,11 @@ MODALITY IS NOT YOUR CHOICE FOR THESE — fixed rules:
   ZeroVelocity          → MUST be SOFT
   OrientationLimit      → MUST be HARD
   HoldAtWaypoint        → MUST be SOFT
+
+Geometry note:
+    Obstacle/Human geometry is NOT derived from modality. Use clause field
+    "avoidance_geometry": "sphere" or "cylinder_infinite" based on the
+    object in the gripper.
 """
 
 
@@ -139,6 +148,7 @@ Each clause dict must have:
 For HARD obstacle/human clauses, also include:
   "hard_strength"    : float
   "hard_infl_factor" : float
+    "avoidance_geometry" : "sphere" or "cylinder_infinite"
 
 For *_during operators, also include:
   "time_window": [t_start, t_end]

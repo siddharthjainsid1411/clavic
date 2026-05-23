@@ -95,6 +95,7 @@
       "predicate": "ObstacleAvoidance",
       "weight": 20.0,
       "modality": "HARD",
+      "avoidance_geometry": "cylinder_infinite",
       "_comment": "Geometric guarantee: DMP repulsion + radial projector",
       "hard_strength": 0.05,
       "hard_infl_factor": 2.0

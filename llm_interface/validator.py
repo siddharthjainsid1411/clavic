@@ -74,20 +74,12 @@ def validate_and_clamp(spec_dict: dict) -> tuple[dict, list[str], list[str]]:
 
     bindings = spec["bindings"]
 
-    # Geometry is now deterministic from modality in json_parser:
-    #   HARD -> cylinder_infinite, SOFT/PREFER/legacy REQUIRE -> sphere.
-    # Remove geometry overrides from LLM/user JSON for consistency.
-    for idx, clause in enumerate(spec["clauses"]):
-        if "hard_geometry" in clause:
-            warnings.append(
-                f"clause[{idx}]: 'hard_geometry' ignored (geometry is derived from modality)."
-            )
-            clause.pop("hard_geometry", None)
-
+    # Geometry is no longer derived from modality when avoidance_geometry is provided.
+    # Ignore any legacy per-binding geometry fields to keep a single source of truth.
     geom_keys = [k for k in bindings.keys() if k.endswith(".geometry")]
     for key in geom_keys:
         warnings.append(
-            f"binding '{key}' ignored (geometry is derived from modality)."
+            f"binding '{key}' ignored (use clause field 'avoidance_geometry')."
         )
         bindings.pop(key, None)
 
@@ -104,6 +96,8 @@ def validate_and_clamp(spec_dict: dict) -> tuple[dict, list[str], list[str]]:
                     f"binding '{key}'={val} out of range [0.0,1.0] -> clamped to {clamped}."
                 )
                 bindings[key] = clamped
+
+    obstacle_predicates = {"ObstacleAvoidance", "HumanBodyExclusion"}
 
     # Per-clause validation
     for idx, clause in enumerate(spec["clauses"]):
@@ -148,6 +142,21 @@ def validate_and_clamp(spec_dict: dict) -> tuple[dict, list[str], list[str]]:
                 f"Valid predicates: {sorted(CATALOGUE.keys())}"
             )
             continue
+
+        if "avoidance_geometry" in clause:
+            if predicate not in obstacle_predicates:
+                warnings.append(
+                    f"{tag} ({predicate}): avoidance_geometry ignored for non-obstacle predicate."
+                )
+                clause.pop("avoidance_geometry", None)
+            else:
+                geom = str(clause["avoidance_geometry"]).strip().lower()
+                if geom not in ("sphere", "cylinder_infinite"):
+                    errors.append(
+                        f"{tag} ({predicate}): avoidance_geometry must be 'sphere' or 'cylinder_infinite'."
+                    )
+                else:
+                    clause["avoidance_geometry"] = geom
 
         cat = CATALOGUE[predicate]
 

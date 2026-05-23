@@ -1,19 +1,17 @@
 {
-  "_description": "Scene 3b: Ball delivery to human — NO obstacle avoidance (raw spring-damper)",
+  "_description": "Scene 3b: Ball delivery to human — HARD obstacle avoidance (object-dependent geometry)",
   "_notes": [
     "Same geometry as Scene 3 (start/goal/obstacle positions identical).",
-    "Key difference: obstacle avoidance is NONE — no DMP repulsion and no",
-    "hard radial projector. The trajectory follows the raw spring-damper",
-    "attractor and may freely penetrate the obstacle zone.",
+    "Obstacle avoidance is HARD: DMP repulsion + runtime HOCBF + projector backstop.",
+    "Geometry is selected by avoidance_geometry based on object in gripper.",
     "",
     "Three-tier avoidance system:",
-    "  HARD  → DMP repulsion + hard radial projector  (guaranteed, Scene 3)",
-    "  SOFT  → DMP repulsion only                     (preferred, no guarantee)",
-    "  NONE  → no repulsion, no projector             (raw behavior, Scene 3b)",
+    "  HARD  → DMP repulsion + runtime HOCBF + projector backstop",
+    "  SOFT  → DMP repulsion only (preferred, no guarantee)",
+    "  NONE  → no repulsion, no projector (raw behavior)",
     "",
-    "The ObstacleAvoidance clause below has modality=PREFER (soft optimizer cost,",
-    "weight=9.0). This nudges the optimizer via PIBB but provides no geometric",
-    "enforcement — only the avoidance tier (NONE here) controls geometry.",
+    "The ObstacleAvoidance clause below is HARD; geometry is explicit via",
+    "avoidance_geometry and independent of modality.",
     "",
     "2-phase task: carry cup to human (0-7s), hold at human position (7-10s).",
     "No pour: keep measured cup orientation from start/goal poses.",
@@ -65,9 +63,12 @@
     {
       "type": "always",
       "predicate": "ObstacleAvoidance",
-      "weight": 9.0,
-      "modality": "SOFT",
-      "_comment": "SOFT: nudge path away from obstacle but penetration is acceptable (harmless ball)"
+      "weight": 20.0,
+      "modality": "HARD",
+      "avoidance_geometry": "sphere",
+      "hard_strength": 0.05,
+      "hard_infl_factor": 2.5,
+      "_comment": "HARD: avoid laptop with object-dependent geometry"
     },
     {
       "type": "always",
