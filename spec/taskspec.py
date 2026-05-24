@@ -10,12 +10,12 @@ class Clause:
     predicate: str         # name of predicate (or tuple of two names for "until")
     weight: float          # logic weight
     modality: str          # "HARD", "REQUIRE", or "PREFER"
-    #   HARD    — 3-layer geometric guarantee:
-    #               Layer 1: DMP repulsive forcing inside ODE
-    #               Layer 2: post-rollout radial projector (∀t: ||p-c|| ≥ r)
-    #               Layer 3: slack penalty in optimizer (same as REQUIRE)
+    #   HARD    — post-rollout geometric guarantee:
+    #               radial projection + localized Gaussian deformation
+    #               + slack penalty in optimizer (same as REQUIRE)
     #             The JSON parser extracts obstacle specs automatically and
-    #             policy.setup_hard_obstacles_from_taskspec() wires Layers 1+2.
+    #             policy.setup_hard_obstacles_from_taskspec() wires the
+    #             deformation stage after rollout.
     #   REQUIRE — optimizer slack penalty only (no geometric guarantee).
     #   PREFER  — weighted soft cost; can trade off against other objectives.
     parameters: Dict[str, Any] = field(default_factory=dict)

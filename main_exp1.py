@@ -5,7 +5,7 @@ Single-phase task (10 s):
   Carry object from start to goal while navigating around a human.
 
 Two-layer human constraint:
-  Body exclusion  (REQUIRE + HARD DMP repulsion + radial projector):
+  Body exclusion  (REQUIRE + HARD post-rollout deformation):
       radius = 0.08 m  — hard geometric guarantee via projector
   Comfort zone    (PREFER, weight=15.0 — soft, high-weight):
       radius = 0.19 m  — strong optimizer penalty, no geometric enforcement
@@ -583,8 +583,8 @@ def main():
 
     policy = MultiPhaseCertifiedPolicy(taskspec.phases, K0=300.0, D0=30.0)
 
-    # Layers 1+2 (DMP repulsion + radial projector) are wired automatically
-    # from the JSON modality="HARD" clause — no manual hardcoding needed.
+    # HARD human avoidance is wired automatically from the JSON
+    # modality="HARD" clause — radial projection + Gaussian deformation.
     policy.setup_hard_obstacles_from_taskspec(taskspec)
 
     theta_dim = policy.parameter_dimension()
@@ -625,6 +625,7 @@ def main():
     best_theta = theta_init.copy()
 
     print(f"\nPIBB: {N_UPDATES} updates × {N_SAMPLES} samples")
+    print("  HARD avoidance: post-rollout radial projection + localized Gaussian smoothing")
 
     for upd in range(N_UPDATES):
         samples = optimizer.sample(N_SAMPLES)

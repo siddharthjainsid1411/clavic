@@ -32,8 +32,8 @@ Step 3  — json_parser.load_taskspec_from_dict()
             HARD clauses auto-populate hard_obstacle_specs (used by Layers 1+2).
 
 Step 4  — MultiPhaseCertifiedPolicy + setup_hard_obstacles_from_taskspec()
-            Wires DMP repulsion (Layer 1) + radial projector (Layer 2) from
-            hard_obstacle_specs. Nothing hard-coded — comes entirely from JSON.
+            Wires post-rollout radial projection + localized Gaussian deformation
+            from hard_obstacle_specs. Nothing hard-coded — comes entirely from JSON.
 
 Step 5  — Compiler.compile(taskspec) → objective_fn(trace)
             HARD/REQUIRE  → SLACK_WEIGHT=500 * max(0, -rho)²
@@ -56,7 +56,7 @@ ROBUSTNESS GUARANTEES (what the LLM cannot break)
                               eventually_during, until} accepted
   • time_window enforcement — *_during operators must supply time_window, else rejected
   • horizon_sec guard       — clamped to [1.0, 60.0]
-  • 3-layer geometry        — Layers 1+2 (DMP repulsion + projector) are
+  • Post-rollout geometry   — radial projection + localized smoothing are
                               ALWAYS active for HARD clauses regardless of optimiser
 """
 

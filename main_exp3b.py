@@ -4,7 +4,7 @@ Exp 3b: Ball Delivery to Human — Soft Obstacle Avoidance (weight-controlled).
 Same geometry as Scene 3 (start/goal/obstacle positions identical), but the
 object being carried is a harmless ball.  Obstacle avoidance is a SOFT
 PREFER constraint: the optimizer has a weighted penalty for penetrating the
-obstacle zone, but NO geometric enforcement (no DMP repulsion, no projector).
+obstacle zone, but NO geometric enforcement (no radial projection, no Gaussian deformation).
 
 The key idea: the weight parameter controls the avoidance tradeoff.
   Low weight  → optimizer ignores obstacle, takes straight path through it
@@ -16,7 +16,7 @@ and the trajectory clips the obstacle zone. Here we control that directly
 via the obstacle weight.
 
 Three-tier avoidance comparison:
-  Scene 3  (avoidance="HARD"):  DMP repulsion + radial projector
+  Scene 3  (avoidance="HARD"):  radial projection + localized Gaussian deformation
                                  → GUARANTEED ||p(t)-c|| ≥ r  ∀t
   avoidance="SOFT"           :  DMP repulsion ONLY
                                  → path PREFERS to avoid, no geometric guarantee

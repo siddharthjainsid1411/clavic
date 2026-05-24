@@ -667,12 +667,6 @@ def plot_kinematics(trace, best_cost, base="exp3a_kinematics"):
     plt.close()
 
 
-# ======================================================================
-#  CSV export — 25 columns in fixed order:
-#  x,y,z,qw,qx,qy,qz,
-#  k11,k12,k13,k21,k22,k23,k31,k32,k33,
-#  d11,d12,d13,d21,d22,d23,d31,d32,d33
-# ======================================================================
 def save_trajectory_csv(trace, csv_path="exp3a_trajectory.csv"):
     import csv
     pos = trace.position   # (T, 3)
@@ -714,8 +708,7 @@ def save_trajectory_csv(trace, csv_path="exp3a_trajectory.csv"):
             writer.writerow(row)
 
     print(f"Saved: {csv_path}  ({T} rows)")
-
-
+ 
 # ======================================================================
 #  main
 # ======================================================================
@@ -756,14 +749,8 @@ def main():
 
 
     # ── Hard obstacle avoidance by construction ────────────────────────
-    # Register hard obstacle from JSON — two-layer avoidance:
-    #   Layer 1 (DMP repulsion, inside ODE): steers the spring-damper attractor
-    # Layers 1+2 (DMP repulsion + radial projector) are wired automatically
-    # from the JSON modality="HARD" clause — no manual hardcoding needed.
-    #   Layer 1 (DMP repulsion, inside ODE): repulsive forcing steers trajectory
-    #     organically around the obstacle → smooth arc, no C-turn.
-    #   Layer 2 (hard radial projector, post-rollout): backstop guarantee.
-    #     ∀t: ||p(t)-c|| ≥ r_safe  — by construction, always on.
+    # HARD obstacle avoidance is wired automatically from the JSON
+    # modality="HARD" clause — radial projection + Gaussian deformation.
     policy.setup_hard_obstacles_from_taskspec(taskspec)
     theta_dim = policy.parameter_dimension()
     print(f"Multi-phase policy: {len(taskspec.phases)} phases, theta_dim={theta_dim}")
@@ -779,22 +766,20 @@ def main():
                             human_position=HUMAN_POS,
                             human_proximity_radius=HUMAN_PROX_RAD)
 
-    # ── Two-layer obstacle avoidance ──────────────────────────────────
-    # Layer 1 (soft, inside PIBB loop):
+    # ── Hard + soft obstacle handling ────────────────────────────────
+    # Soft layer (inside PIBB loop):
     #   ObstacleAvoidance clause in scene3_task.json (weight=6, modality=REQUIRE)
     #   nudges the DMP weights toward paths that go around the obstacle.
     #   The optimizer sees a smooth cost signal and shapes the trajectory.
     #
-    # Layer 2 (hard, inside every policy.rollout() call):
+    # Hard layer (inside every policy.rollout() call):
     #   ObstacleProjector in MultiPhaseCertifiedPolicy.rollout() radially
-    #   projects every position point outside the hard boundary BEFORE the Trace
-    #   is built.  This runs unconditionally — hard backstop guarantee.
+    #   projects colliding points and applies localized Gaussian smoothing
+    #   of the correction BEFORE the Trace is built.
     #
-    # Three-layer obstacle avoidance:
-    #   Layer 1 — DMP repulsion (inside ODE): smoothly bends the spring-damper
-    #     attractor around the obstacle.  Reduces/eliminates C-turn arc.
-    #   Layer 2 — Soft cost (ObstacleAvoidance clause in JSON): PIBB reward signal.
-    #   Layer 3 — Radial projector (post-rollout): hard guarantee ∀t: ||p-c||≥r.
+    # Net effect:
+    #   - soft cost shapes PIBB updates
+    #   - hard post-rollout deformation preserves clearance by construction
     objective_fn = compiler.compile(taskspec)
 
     trace0 = policy.rollout(np.zeros(theta_dim))
@@ -822,17 +807,11 @@ def main():
     best_cost  = float("inf")
     best_theta = theta_init.copy()
 
-    hard_strength = 0.05
-    hard_infl = 2.5
-    if obs_clause.hard_obstacle is not None:
-        hard_strength = float(obs_clause.hard_obstacle.get("strength", hard_strength))
-        hard_infl = float(obs_clause.hard_obstacle.get("infl_factor", hard_infl))
-
     print(f"\nPIBB: {N_UPDATES} updates x {N_SAMPLES} samples")
     print(f"  K penalty  : ramp [d < {HUMAN_RAMP_RAD} m], hard limit {K_AXIS_LIMIT:.0f} N/m at [d < {HUMAN_PROX_RAD} m]")
     print(
-        f"  Obs avoid  : DMP repulsion (str={hard_strength:.3f}, infl={hard_infl:.2f}) "
-        f"+ soft cost + hard projector ({OBSTACLE_GEOMETRY}, r={OBS_RAD:.2f} m)"
+        f"  Obs avoid  : soft cost + post-rollout radial projection + "
+        f"localized Gaussian smoothing ({OBSTACLE_GEOMETRY}, r={OBS_RAD:.2f} m)"
     )
 
     for upd in range(N_UPDATES):

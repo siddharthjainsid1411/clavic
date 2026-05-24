@@ -2,7 +2,8 @@
 Exp 3c: Ball Delivery to Human - HARD Obstacle Avoidance (no pour).
 
 Same geometry as Scene 3b, but obstacle avoidance is HARD:
-DMP repulsion + radial projector (geometric guarantee).
+post-rollout radial projection + localized Gaussian deformation
+(geometric guarantee).
 
 2-phase task:
   Phase 1 (0-7s) : carry ball from start to human
@@ -688,12 +689,12 @@ def main():
 
     policy = MultiPhaseCertifiedPolicy(taskspec.phases, K0=300.0, D0=30.0)
 
-    # HARD avoidance: DMP repulsion + radial projector from JSON.
+    # HARD avoidance: post-rollout geometric deformation from JSON.
     policy.setup_hard_obstacles_from_taskspec(taskspec)
 
     theta_dim = policy.parameter_dimension()
     print("Exp 3c: Ball delivery - HARD obstacle avoidance (no pour)")
-    print("  avoidance=HARD: DMP repulsion + radial projector")
+    print("  avoidance=HARD: post-rollout radial projection + localized Gaussian smoothing")
     print(f"Multi-phase policy: {len(taskspec.phases)} phases, theta_dim={theta_dim}")
     print(f"  has_orientation: {policy.has_orientation}")
     for i, p in enumerate(taskspec.phases):
@@ -729,17 +730,11 @@ def main():
     best_cost  = float("inf")
     best_theta = theta_init.copy()
 
-    hard_strength = 0.10
-    hard_infl = 3.5
-    if obs_clause.hard_obstacle is not None:
-        hard_strength = float(obs_clause.hard_obstacle.get("strength", hard_strength))
-        hard_infl = float(obs_clause.hard_obstacle.get("infl_factor", hard_infl))
-
     print(f"\nPIBB: {N_UPDATES} updates x {N_SAMPLES} samples")
     print(
         f"  Obstacle: HARD (geometry={OBSTACLE_GEOMETRY}, "
-        f"DMP repulsion str={hard_strength:.3f}, infl={hard_infl:.2f}, "
-        f"projector r={OBS_SAFE_RAD:.2f} m)"
+        f"post-rollout radial projection + localized Gaussian smoothing, "
+        f"safe r={OBS_SAFE_RAD:.2f} m)"
     )
     print(f"  K penalty: ramp [d < {HUMAN_RAMP_RAD} m], limit {K_AXIS_LIMIT:.0f} N/m at [d < {HUMAN_PROX_RAD} m]")
 

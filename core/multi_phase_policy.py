@@ -113,12 +113,13 @@ class MultiPhaseCertifiedPolicy:
     # ------------------------------------------------------------------ #
     def setup_hard_obstacles_from_taskspec(self, taskspec):
         """
-        Automatically wire Layers 1+2 (DMP repulsion + radial projector) for
-        all clauses declared with modality="HARD" in the JSON task spec.
+        Automatically wire hard obstacle handling (radial projection +
+        Gaussian deformation) for all clauses declared with modality="HARD"
+        in the JSON task spec.
 
         Call this immediately after constructing the policy, before rollout.
-        The obstacle specs (center, radius, strength, infl_factor) are
-        extracted by json_parser and stored on taskspec.hard_obstacle_specs.
+        The obstacle specs (center, radius, geometry) are extracted by
+        json_parser and stored on taskspec.hard_obstacle_specs.
 
         Example
         -------
@@ -144,9 +145,9 @@ class MultiPhaseCertifiedPolicy:
                                                    "cylinder_infinite"
             "avoidance"   : str    (optional)  — one of "HARD", "SOFT", "NONE".
                                                  Default: "HARD".
-            "strength"    : float  (optional)  — DMP repulsion strength (default 0.05).
-            "infl_factor" : float  (optional)  — influence zone = radius * infl_factor
-                                                 (default 2.5)
+            "sigma"       : float  (optional)  — Gaussian smoothing width (timesteps)
+            "margin"      : float  (optional)  — collision detection margin (m)
+            "eps"         : float  (optional)  — projection buffer (m)
 
         Backward-compatible alias (deprecated — prefer "avoidance"):
             "hard"        : bool   (optional)  — True → "HARD", False → "SOFT".
@@ -154,33 +155,26 @@ class MultiPhaseCertifiedPolicy:
 
         Three tiers
         -----------
-        HARD  (avoidance="HARD", default)
-          Layer 1 — DMP repulsive forcing inside ODE: organically routes the
-                    spring-damper attractor around obstacle. Smooth arc, no C-turn.
-          Layer 2 — Hard radial projector post-rollout: backstop guarantee.
-                    ∀t: ||p(t) − c|| ≥ radius  — by construction, unbreakable.
-          Use for: objects that must not be hit (fragile mug, human, wall).
+                HARD  (avoidance="HARD", default)
+                    Post-rollout geometric handling only:
+                        - Radial projection of colliding points
+                        - Gaussian temporal smoothing of the correction (TRACE-inspired)
+                    Use for: objects that must not be hit (fragile mug, human, wall).
 
-        SOFT  (avoidance="SOFT")
-          Layer 1 — DMP repulsive forcing inside ODE only: path PREFERS to arc
-                    around the obstacle but is NOT guaranteed to stay outside.
-                    No projector backstop. Optimizer (PIBB) sees soft cost.
-          Use for: preferred avoidance but occasional penetration is acceptable.
+                SOFT  (avoidance="SOFT")
+                    No geometric deformation. Optimizer (PIBB) sees soft cost only.
+                    Use for: preferred avoidance but occasional penetration is acceptable.
 
-        NONE  (avoidance="NONE")
-          No DMP repulsion, no projector — pure original spring-damper behavior.
-          The optimizer sees only the soft ObstacleAvoidance clause cost (if
-          registered in the task spec) but there is no geometric forcing at all.
-          The trajectory may freely penetrate the obstacle zone.
-          Use for: harmless objects where the ball can pass through freely
-                   (e.g. ball delivery through a gate or past a marker).
+                NONE  (avoidance="NONE")
+                    No geometric deformation. The trajectory may freely penetrate.
+                    Use for: harmless objects where penetration is acceptable.
 
         Examples
         --------
-        # Hard avoidance (guaranteed — mug-carry scene):
+        # Hard avoidance (geometric deformation — mug-carry scene):
         policy.set_obstacles([
             {"center": [0.40, 0.30, 0.30], "radius": 0.12,
-             "avoidance": "HARD", "strength": 0.05, "infl_factor": 2.0},
+             "avoidance": "HARD", "sigma": 12.0, "margin": 0.02, "eps": 0.01},
         ])
 
         # None avoidance (raw, may penetrate freely — ball delivery scene):
@@ -198,32 +192,12 @@ class MultiPhaseCertifiedPolicy:
                 return "HARD" if obs["hard"] else "SOFT"
             return "HARD"   # default
 
-        # ── Hard projector: only for HARD obstacles ─────────────────────
+        # ── Hard deformation: only for HARD obstacles ───────────────────
         hard_obs = [obs for obs in obstacles if _mode(obs) == "HARD"]
         self._projector = ObstacleProjector(hard_obs)
-
-        # ── DMP repulsive forcing: HARD and SOFT obstacles only.
-        # NONE obstacles get neither projector nor repulsion — raw behavior.
-        rep_obs = []
-        for obs in obstacles:
-            if _mode(obs) == "NONE":
-                continue          # skip — no forcing at all for this obstacle
-            c      = np.asarray(obs["center"], float)
-            r      = float(obs["radius"])
-            s      = float(obs.get("strength",    0.05))
-            ifact  = float(obs.get("infl_factor", 2.5))
-            g      = str(obs.get("geometry", "sphere"))
-            rep_obs.append({
-                "center":  c,
-                "radius":  r,
-                "r_infl":  r * ifact,
-                "strength": s,
-                "geometry": g,
-            })
-
-        # Inject into every phase DMP
+        # Explicitly disable any legacy repulsive forcing in DMPs
         for dmp in self.dmps:
-            dmp.repulsive_obstacles = rep_obs
+            dmp.repulsive_obstacles = []
 
     # ------------------------------------------------------------------ #
     def parameter_dimension(self):
@@ -363,14 +337,17 @@ class MultiPhaseCertifiedPolicy:
             orientation = np.concatenate(all_quat, axis=0)
             angular_velocity = np.concatenate(all_omega, axis=0)
 
-        # ── Hard obstacle projection (by construction) ─────────────────
-        # Project positions outside all registered obstacle spheres BEFORE
-        # building the Trace.  CGMS gains are untouched — they are computed
-        # by the Cholesky ODE inside each phase's DMP rollout_traj() call
-        # and do not depend on position values.
+        # ── Hard obstacle deformation (by construction) ─────────────────
+        # Radial projection + localized normalized Gaussian smoothing
+        # BEFORE building the Trace.
+        # CGMS gains are untouched — they are computed by the Cholesky ODE
+        # inside each phase's DMP rollout_traj() call and do not depend on
+        # position values.
         pos_full = np.concatenate(all_pos)
         vel_full = np.concatenate(all_vel)
-        pos_full, vel_full = self._projector.project(pos_full, vel_full, self.DT)
+        pos_full, vel_full, obstacle_debug = self._projector.project(
+            pos_full, vel_full, self.DT, return_debug=True
+        )
 
         trace = Trace(
             time=np.concatenate(all_time),
@@ -384,5 +361,6 @@ class MultiPhaseCertifiedPolicy:
             raw_sd_weights=np.concatenate(all_raw_sd),
             orientation=orientation,
             angular_velocity=angular_velocity,
+            obstacle_debug=obstacle_debug,
         )
         return trace

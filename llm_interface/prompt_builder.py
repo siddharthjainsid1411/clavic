@@ -99,7 +99,7 @@ def _build_modality_rules_section() -> str:
 === MODALITY RULES (STRICT) ===
 
 HARD    — use for physical safety constraints that must NEVER be violated.
-          Triggers DMP repulsion + geometric projection (guaranteed safe).
+          Triggers geometric projection + Gaussian smoothing (post-rollout).
           Examples: collision avoidance, human body exclusion.
 
 REQUIRE — use for task-completion constraints (optimizer penalises violation).

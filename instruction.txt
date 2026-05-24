@@ -12,7 +12,7 @@ Instructions for you to follow :
 
 
 Context:
-- we  were doing, can you once again fo to out current workspace code to have a idea of below impletation: we have one ready draft then we implemented and further changes will be added in below: /home/siddharth/ssd_data/clavic/paper_theoratical_ref/_IROS_2026__wLTL_CGMS (2).pdf
+- we  were doing, can you once again fo to out current workspace code to have a idea of below impletation: we have one ready draft then we implemented and further changes will be added in below: /home/siddharth/ssd_data/clavic/paper_theoratical_ref/_IROS_2026__wLTL_CGMS.pdf
  
 - we are using two base papers:
 1. cgms : paper - https://arxiv.org/html/2511.16330v1

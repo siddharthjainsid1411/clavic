@@ -10,7 +10,8 @@ class Trace:
     """
     def __init__(self, time, position, velocity, gains,
                  raw_sk_weights=None, raw_sd_weights=None,
-                 orientation=None, angular_velocity=None):
+                 orientation=None, angular_velocity=None,
+                 obstacle_debug=None):
         self.time = time
         self.position = position
         self.velocity = velocity
@@ -21,6 +22,7 @@ class Trace:
         # Orientation (quaternion) and angular velocity — None when not used
         self.orientation = orientation          # (T, 4) quaternions [w,x,y,z]
         self.angular_velocity = angular_velocity  # (T, 3) rad/s
+        self.obstacle_debug = obstacle_debug
 
 
 class CertifiedPolicy:

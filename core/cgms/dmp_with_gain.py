@@ -55,13 +55,10 @@ class DMPWithGainScheduling:
         self.slack_mag  = float(slack_mag)
         self.slack_rate = float(slack_rate_limit)
         self.Q_init     = None   # set by multi_phase_policy for phase continuity
-        # Repulsive obstacles: list of {"center": np.array(3), "radius": float,
-        #                                "strength": float}
-        # Injected by MultiPhaseCertifiedPolicy.set_obstacles() before rollout.
-        # Applied INSIDE the DMP ODE so the spring-damper attractor routes around
-        # the obstacle organically — goal-seeking is preserved.
-        # The radial projector in obstacle_projection.py remains as the hard
-        # backstop guarantee; this repulsion only shapes the DMP trajectory.
+        # Repulsive obstacles (legacy, no longer used).
+        # We keep this field for backward compatibility, but the DMP rollout
+        # does not apply any repulsive acceleration. Obstacle handling is
+        # performed post-rollout via geometric deformation.
         self.repulsive_obstacles = []
         self.ds         = DynamicalSystems(self.tau)
         
@@ -162,47 +159,6 @@ class DMPWithGainScheduling:
             spring = k * (y - goal)
             damper = d * self.tau * yd
             net_accel = ((fhat * gate) - (spring + damper) / m) / (self.tau**2)
-
-            # ── Repulsive obstacle forcing (inside ODE — shapes the path) ──
-            # For each registered obstacle, add a repulsive acceleration when
-            # y is within the influence zone (d < r * INFL_FACTOR).
-            # Repulsion tapers smoothly: zero at influence boundary, max at surface.
-            # This steers the spring-damper ODE organically — the goal attractor
-            # remains active and the path routes AROUND the obstacle.
-            # The K=Q^T Q Cholesky ODE runs AFTER this position loop — untouched.
-            for obs in self.repulsive_obstacles:
-                r    = obs["radius"]
-                r_infl = obs["r_infl"]
-                geometry = obs.get("geometry", "sphere")
-
-                if geometry == "sphere":
-                    diff = y - obs["center"]
-                    dist = float(np.linalg.norm(diff))
-                    if dist < 1e-9:
-                        # Degenerate: exactly at centre — push in +X+Y direction
-                        net_accel += obs["strength"] * np.array([1.0, 1.0, 0.0]) / np.sqrt(2.0)
-                    elif dist < r_infl:
-                        n      = diff / dist                          # outward unit normal
-                        # Smooth cubic taper: alpha=1 at surface (dist=r), 0 at r_infl.
-                        alpha  = ((r_infl - dist) / (r_infl - r)) ** 3
-                        k_dmp  = (self.d ** 2) / 4.0   # DMP spring constant
-                        mag    = obs["strength"] * k_dmp * alpha
-                        net_accel += mag * n
-                elif geometry == "cylinder_infinite":
-                    diff_xy = y[:2] - obs["center"][:2]
-                    dist_xy = float(np.linalg.norm(diff_xy))
-                    if dist_xy < 1e-9:
-                        n = np.array([1.0, 1.0, 0.0]) / np.sqrt(2.0)
-                        net_accel += obs["strength"] * n
-                    elif dist_xy < r_infl:
-                        nxy    = diff_xy / dist_xy
-                        n      = np.array([nxy[0], nxy[1], 0.0])
-                        alpha  = ((r_infl - dist_xy) / (r_infl - r)) ** 3
-                        k_dmp  = (self.d ** 2) / 4.0
-                        mag    = obs["strength"] * k_dmp * alpha
-                        net_accel += mag * n
-                else:
-                    raise ValueError(f"Unsupported obstacle geometry: {geometry}")
 
             return net_accel
 

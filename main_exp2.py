@@ -10,8 +10,7 @@ Key features vs Scene 3:
   - THREE phases: carry | hold-2s | continue  (Scene 3 had carry | pour)
   - Obstacle avoidance = HARD throughout
       → avoidance="HARD"  in set_obstacles()
-      → DMP repulsive forcing (steers ODE organically around obstacle)
-      → hard radial projector post-rollout (backstop guarantee)
+      → post-rollout radial projection + localized Gaussian deformation
       → GUARANTEED  ||p(t) − c|| ≥ r_safe  ∀t
     - Constant orientation from spec/exp2_task.json throughout all 3 phases (no tilt, no pour)
   - No human proximity stiffness penalty — goal is a delivery point, not a person
@@ -656,8 +655,8 @@ def main():
 
     policy = MultiPhaseCertifiedPolicy(taskspec.phases, K0=300.0, D0=30.0)
 
-    # Layers 1+2 (DMP repulsion + radial projector) are wired automatically
-    # from the JSON modality="HARD" clause — no manual hardcoding needed.
+    # Hard post-rollout deformation is wired automatically from the JSON
+    # modality="HARD" clause — no manual hardcoding needed.
     policy.setup_hard_obstacles_from_taskspec(taskspec)
 
     theta_dim = policy.parameter_dimension()
@@ -699,17 +698,11 @@ def main():
     best_cost  = float("inf")
     best_theta = theta_init.copy()
 
-    hard_strength = 0.05
-    hard_infl = 2.5
-    if obs_clause.hard_obstacle is not None:
-        hard_strength = float(obs_clause.hard_obstacle.get("strength", hard_strength))
-        hard_infl = float(obs_clause.hard_obstacle.get("infl_factor", hard_infl))
-
     print(f"\nPIBB: {N_UPDATES} updates x {N_SAMPLES} samples")
     print(
         f"  Obstacle: HARD  (geometry={OBSTACLE_GEOMETRY}, "
-        f"DMP repulsion str={hard_strength:.3f}, infl={hard_infl:.2f}, "
-        f"projector r={OBS_SAFE_RAD:.2f} m)"
+        f"post-rollout radial projection + localized Gaussian smoothing, "
+        f"safe r={OBS_SAFE_RAD:.2f} m)"
     )
 
     for upd in range(N_UPDATES):

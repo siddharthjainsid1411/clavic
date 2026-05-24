@@ -535,8 +535,8 @@ def main():
 
     policy = MultiPhaseCertifiedPolicy(taskspec.phases, K0=300.0, D0=30.0)
 
-    # Layers 1+2 (DMP repulsion + radial projector) are wired automatically
-    # from the JSON modality="HARD" clause — no manual hardcoding needed.
+    # HARD human avoidance is wired automatically from the JSON
+    # modality="HARD" clause — radial projection + Gaussian deformation.
     policy.setup_hard_obstacles_from_taskspec(taskspec)
 
     theta_dim = policy.parameter_dimension()
@@ -548,6 +548,7 @@ def main():
     else:
         print(f"  Comfort zone (SOFT):  r={HUMAN_COMFORT_RAD:.2f} m")
     print(f"  Stiffness ramp:       starts at d={HUMAN_RAMP_RAD:.2f} m")
+    print("  HARD avoidance:       post-rollout radial projection + localized Gaussian smoothing")
 
     predicate_registry = build_predicate_registry()
     compiler = Compiler(predicate_registry,
